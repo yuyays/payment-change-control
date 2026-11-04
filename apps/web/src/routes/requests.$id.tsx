@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { approve, getState, replay, type Claim, type ReplayResult } from "@/lib/api.js";
+import { formatMoney } from "@/lib/money.js";
 
 export const Route = createFileRoute("/requests/$id")({
   component: RequestRoute,
@@ -154,6 +155,11 @@ function RequestRoute() {
           <h1 className="text-3xl font-semibold">
             {state.evaluation.outcome === "reject" ? "Rejected at intake" : "Pending human review"}
           </h1>
+          <p className="text-sm font-medium text-stone-800">
+            {state.request.amount === undefined
+              ? "Amount at risk: not set"
+              : `Amount at risk: ${formatMoney(state.request.amount)}`}
+          </p>
           <p className="text-sm text-stone-600">
             From {state.request.extraction.fromAddress}
             {state.request.extraction.replyTo === null

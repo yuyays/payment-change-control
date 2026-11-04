@@ -41,11 +41,17 @@ export interface Vendor {
   readonly phoneOnFile: string;
 }
 
+export interface Money {
+  readonly currency: string;
+  readonly minor: number;
+}
+
 export interface RequestState {
   readonly request: {
     readonly id: string;
     readonly vendorId: string;
     readonly receivedAt: number;
+    readonly amount?: Money;
     readonly rawBody: string;
     readonly extraction: {
       readonly fromAddress: string;
@@ -75,6 +81,7 @@ export interface SeedPayload {
   readonly vendor: Vendor & { readonly bankAccount: { bankName: string; iban: string } };
   readonly email: { rawBody: string; fromAddress: string; replyTo: string | null };
   readonly receivedAt?: number;
+  readonly amount?: Money;
 }
 
 const base = import.meta.env.VITE_API_URL ?? "";

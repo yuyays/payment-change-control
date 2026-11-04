@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { getState, type RequestState } from "@/lib/api.js";
 import { DEMO_REQUESTS, seedAll } from "@/lib/demo.js";
+import { formatMoney } from "@/lib/money.js";
 
 export const Route = createFileRoute("/")({
   component: IndexRoute,
@@ -39,8 +40,8 @@ function IndexRoute() {
 
   const statesQuery = useQuery({
     queryKey: ["states"],
-    queryFn: async (): Promise<ReadonlyArray<Row>> =>
-      Promise.all(
+    queryFn: async (): Promise<ReadonlyArray<Row>> => {
+      const rows = await Promise.all(
         DEMO_REQUESTS.map(async (demo) => {
           try {
             const result = await getState(demo.id);
@@ -49,7 +50,12 @@ function IndexRoute() {
             return { id: demo.id, title: demo.title, subtitle: demo.subtitle, state: null };
           }
         }),
-      ),
+      );
+      // Largest exposure first; unknown amounts last.
+      return [...rows].sort(
+        (a, b) => (b.state?.request.amount?.minor ?? -1) - (a.state?.request.amount?.minor ?? -1),
+      );
+    },
     refetchInterval: 4000,
   });
 
@@ -111,6 +117,11 @@ function IndexRoute() {
                   <CardContent className="pt-0 text-sm text-stone-600">
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-xs text-stone-400">{row.id}</span>
+                      <span className="font-medium text-stone-800">
+                        {row.state?.request.amount === undefined
+                          ? "—"
+                          : formatMoney(row.state.request.amount)}
+                      </span>
                       <span>
                         {row.state === null
                           ? "—"
