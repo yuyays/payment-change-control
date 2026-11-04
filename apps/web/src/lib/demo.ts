@@ -2,7 +2,7 @@ import { seed, type SeedPayload } from "./api.js";
 
 const HOUR = 3_600_000;
 
-const vendor = {
+export const DEMO_VENDOR = {
   id: "v-acme",
   name: "Acme Industrial",
   registeredDomain: "acme-industrial.com",
@@ -36,7 +36,7 @@ const make = (
   title,
   subtitle,
   payload: {
-    vendor,
+    vendor: DEMO_VENDOR,
     email: { rawBody: body, fromAddress, replyTo },
     receivedAt,
     ...(amount === undefined ? {} : { amount }),

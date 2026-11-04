@@ -1,5 +1,6 @@
 import type { ChangeRequest, Vendor } from "@pcc/domain";
 import { ChangeRequestDO } from "./ChangeRequestDO.js";
+import { EmlParseError, parseEml } from "./email/parse-eml.js";
 import { createExtractor, ExtractionError } from "./extraction/index.js";
 
 export { ChangeRequestDO };
@@ -40,10 +41,25 @@ const normaliseAmount = (
   return { currency, minor: Math.round(value.minor) };
 };
 
-const failure = (error: unknown): Response =>
-  error instanceof ExtractionError
-    ? json({ error: error.code, message: error.message }, 422)
-    : json({ error: "internal" }, 500);
+const failure = (error: unknown): Response => {
+  if (error instanceof ExtractionError || error instanceof EmlParseError) {
+    return json({ error: error.code, message: error.message }, 422);
+  }
+  return json({ error: "internal" }, 500);
+};
+
+const resolveEmail = (body: { email?: EmailInput; eml?: string }): EmailInput => {
+  if (typeof body.eml === "string" && body.eml.trim() !== "") {
+    const parsed = parseEml(body.eml);
+    return {
+      rawBody: parsed.rawBody,
+      fromAddress: parsed.fromAddress,
+      replyTo: parsed.replyTo,
+    };
+  }
+  if (body.email !== undefined) return body.email;
+  throw new EmlParseError("no_headers", "Provide either an `email` object or an `eml` string.");
+};
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -84,18 +100,26 @@ export default {
     if (action === "intake") {
       const body = await request.json<{
         vendor: Vendor;
-        email: EmailInput;
+        email?: EmailInput;
+        eml?: string;
         receivedAt?: number;
         amount?: { currency: string; minor: number };
       }>();
       const extractor = createExtractor(env);
 
+      let email: EmailInput;
+      try {
+        email = resolveEmail(body);
+      } catch (error) {
+        return failure(error);
+      }
+
       let extracted;
       try {
         extracted = await extractor.extract({
-          rawBody: body.email.rawBody,
-          fromAddress: body.email.fromAddress,
-          replyTo: body.email.replyTo ?? null,
+          rawBody: email.rawBody,
+          fromAddress: email.fromAddress,
+          replyTo: email.replyTo ?? null,
         });
       } catch (error) {
         return failure(error);
@@ -110,7 +134,7 @@ export default {
           env.DEMO_MODE === "1" && typeof body.receivedAt === "number"
             ? body.receivedAt
             : Date.now(),
-        rawBody: body.email.rawBody,
+        rawBody: email.rawBody,
         extraction: extracted.extraction,
         ...(amount === undefined ? {} : { amount }),
       };

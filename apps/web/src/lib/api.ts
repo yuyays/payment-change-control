@@ -119,6 +119,13 @@ const json = async <T>(response: Response): Promise<T> => {
 export const getState = (id: string): Promise<StateResponse> =>
   fetch(url(`/requests/${id}/state`)).then((r) => json<StateResponse>(r));
 
+export const seedEml = (id: string, vendor: SeedPayload["vendor"], eml: string): Promise<unknown> =>
+  fetch(url(`/requests/${id}/intake`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ vendor, eml }),
+  }).then((r) => json<unknown>(r));
+
 export const seed = (id: string, payload: SeedPayload): Promise<unknown> =>
   fetch(url(`/requests/${id}/intake`), {
     method: "POST",
