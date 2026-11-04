@@ -90,6 +90,17 @@ EXTRACTION_MODEL      # default gpt-4o-mini
 
 Without a key, a regex extractor runs so the app works offline.
 
+## Evals
+
+```sh
+pnpm --filter @pcc/worker evals        # offline extractor, no key
+EXTRACTION_API_KEY=... EXTRACTION_MODEL=gpt-6-luna \
+  pnpm --filter @pcc/worker evals:model
+```
+
+30 cases, 0 fraud escapes, 0 auto-approvals. The real-model run on `gpt-6-luna` is in
+[EVALS-MODEL.md](EVALS-MODEL.md); the offline baseline is in [EVALS.md](EVALS.md).
+
 ## Fault injection (the demo)
 
 `EXTRACTION_MODE` swaps in a hostile extractor. It is a demo switch, not a feature.

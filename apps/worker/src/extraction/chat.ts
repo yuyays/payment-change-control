@@ -49,28 +49,39 @@ export class ChatExtractor implements Extractor {
     }
 
     const url = `${this.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-    const response = await fetch(url, {
-      method: "POST",
-      signal: AbortSignal.timeout(20_000),
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.config.apiKey}`,
-      },
-      body: JSON.stringify({
+    const body = (withTemperature: boolean): string =>
+      JSON.stringify({
         model: this.config.model,
-        temperature: 0,
+        ...(withTemperature ? { temperature: 0 } : {}),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
           { role: "user", content: renderEmail(input) },
         ],
-      }),
-    });
+      });
+
+    const send = (payload: string): Promise<Response> =>
+      fetch(url, {
+        method: "POST",
+        signal: AbortSignal.timeout(60_000),
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.config.apiKey}`,
+        },
+        body: payload,
+      });
+
+    let response = await send(body(true));
+    // Some newer model families reject a non-default temperature. Retry once without it.
+    if (response.status === 400) {
+      response = await send(body(false));
+    }
 
     if (!response.ok) {
+      const detail = (await response.text()).slice(0, 300);
       throw new ExtractionError(
         "provider_error",
-        `Extraction provider returned HTTP ${response.status}.`,
+        `Extraction provider returned HTTP ${response.status}: ${detail}`,
       );
     }
 

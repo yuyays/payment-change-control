@@ -50,6 +50,34 @@ describe("anchorClaims", () => {
     expect(anchored).toHaveLength(0);
   });
 
+  it("extracts the value from a quote that includes the label", () => {
+    const body = "New IBAN: FR14 2004 1010 0505 0001 3M02 606";
+    const { anchored, dropped } = anchorClaims(body, [
+      { field: "iban", quote: "New IBAN: FR14 2004 1010 0505 0001 3M02 606" },
+    ]);
+    expect(dropped).toHaveLength(0);
+    expect(anchored[0]?.value).toBe("FR14 2004 1010 0505 0001 3M02 606");
+    expect(body.slice(anchored[0]?.citation.start, anchored[0]?.citation.end)).toBe(
+      "FR14 2004 1010 0505 0001 3M02 606",
+    );
+  });
+
+  it("extracts a lower-case IBAN from a lower-case quote", () => {
+    const body = "new iban: de89 3704 0044 0532 0130 00";
+    const { anchored } = anchorClaims(body, [
+      { field: "iban", quote: "new iban: de89 3704 0044 0532 0130 00" },
+    ]);
+    expect(anchored[0]?.value).toBe("de89 3704 0044 0532 0130 00");
+  });
+
+  it("still drops a quote with no well-formed value inside it", () => {
+    const body = "Our new IBAN is coming next week.";
+    const { anchored } = anchorClaims(body, [
+      { field: "iban", quote: "Our new IBAN is coming next week." },
+    ]);
+    expect(anchored).toHaveLength(0);
+  });
+
   it("deduplicates identical claims", () => {
     const quote = "DE89 3704 0044 0532 0130 00";
     const { anchored } = anchorClaims(BODY, [

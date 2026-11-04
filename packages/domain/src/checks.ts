@@ -119,6 +119,37 @@ export function isWellFormedValue(field: ClaimField, value: string): boolean {
   }
 }
 
+const IBAN_CANDIDATE = /[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,6}(?: ?[A-Z0-9]{1,3})?/gi;
+const PHONE_CANDIDATE = /\+?\d[\d\s()-]{7,}\d/g;
+
+/**
+ * Find a well-formed value *inside* a cited span.
+ *
+ * Models often quote the label with the value ("New IBAN: DE89 ..."). The span is
+ * still verbatim, so we keep the trust property and take the token inside it.
+ * The returned offset is relative to `text`, so the caller can recompute the
+ * citation against the original body.
+ */
+export function extractWellFormed(
+  field: ClaimField,
+  text: string,
+): { readonly value: string; readonly offset: number } | null {
+  if (field === "bankName") {
+    const value = text.trim();
+    if (!isWellFormedValue(field, value)) return null;
+    return { value, offset: text.indexOf(value) };
+  }
+
+  const pattern = field === "iban" ? IBAN_CANDIDATE : PHONE_CANDIDATE;
+  pattern.lastIndex = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (isWellFormedValue(field, match[0])) {
+      return { value: match[0], offset: match.index ?? 0 };
+    }
+  }
+  return null;
+}
+
 /** ISO 13616 mod-97 check. Catches truncated, transposed, and invented IBANs. */
 export function ibanChecksumValid(compact: string): boolean {
   const rearranged = compact.slice(4) + compact.slice(0, 4);

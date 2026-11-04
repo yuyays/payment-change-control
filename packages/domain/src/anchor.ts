@@ -1,4 +1,4 @@
-import { isWellFormedValue } from "./checks.js";
+import { extractWellFormed, isWellFormedValue } from "./checks.js";
 import type { Citation, Claim, ClaimField } from "./types.js";
 
 /** What the model is allowed to produce: a field name and a verbatim quote. Nothing else. */
@@ -27,7 +27,7 @@ export function anchorClaims(
   const seen = new Set<string>();
 
   for (const claim of proposed) {
-    if (claim.quote.trim() === "" || !isWellFormedValue(claim.field, claim.quote)) {
+    if (claim.quote.trim() === "") {
       dropped.push(claim);
       continue;
     }
@@ -35,8 +35,25 @@ export function anchorClaims(
     const key = `${claim.field}\u0000${claim.quote}`;
     if (seen.has(key)) continue;
 
-    const start = rawBody.indexOf(claim.quote);
-    if (start === -1) {
+    const located = rawBody.indexOf(claim.quote);
+    if (located === -1) {
+      dropped.push(claim);
+      continue;
+    }
+
+    // The whole quote is ideal; otherwise take a well-formed token from inside it.
+    const found = isWellFormedValue(claim.field, claim.quote)
+      ? { value: claim.quote, offset: 0 }
+      : extractWellFormed(claim.field, claim.quote);
+
+    if (found === null) {
+      dropped.push(claim);
+      continue;
+    }
+
+    const start = located + found.offset;
+    const end = start + found.value.length;
+    if (rawBody.slice(start, end) !== found.value) {
       dropped.push(claim);
       continue;
     }
@@ -44,11 +61,11 @@ export function anchorClaims(
     seen.add(key);
     const citation: Citation = {
       field: claim.field,
-      quote: claim.quote,
+      quote: found.value,
       start,
-      end: start + claim.quote.length,
+      end,
     };
-    anchored.push({ field: claim.field, value: claim.quote, citation });
+    anchored.push({ field: claim.field, value: found.value, citation });
   }
 
   return { anchored, dropped };

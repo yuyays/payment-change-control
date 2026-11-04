@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vp test run --passWithNoTests",
-    "evals": "vp test run src/evals --disableConsoleIntercept"
+    "evals": "vp test run src/evals/evals.test.ts --disableConsoleIntercept",
+    "evals:model": "vp test run src/evals/model.test.ts --disableConsoleIntercept"
   },
   "dependencies": {
     "@pcc/contracts": "workspace:*",
