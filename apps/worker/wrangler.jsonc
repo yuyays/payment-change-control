@@ -3,11 +3,26 @@
   "name": "payment-change-control",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
-  "observability": { "enabled": true },
+  "observability": {
+    "enabled": true
+  },
   "durable_objects": {
-    "bindings": [{ "name": "CHANGE_REQUEST", "class_name": "ChangeRequestDO" }]
+    "bindings": [
+      {
+        "name": "CHANGE_REQUEST",
+        "class_name": "ChangeRequestDO"
+      }
+    ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["ChangeRequestDO"] }
-  ]
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "ChangeRequestDO"
+      ]
+    }
+  ],
+  "vars": {
+    "DEMO_MODE": "1"
+  }
 }

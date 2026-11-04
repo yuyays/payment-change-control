@@ -15,8 +15,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      "/api": "http://localhost:3000",
-      "/docs": "http://localhost:3000",
+      "/api": "http://127.0.0.1:8787",
     },
   },
   resolve: {

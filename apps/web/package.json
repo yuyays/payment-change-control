@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev",
-    "build": "tsc --noEmit && vp build",
+    "build": "vp build && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vp test run --passWithNoTests"
   },
@@ -23,7 +23,8 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwind-merge": "^3.7.0",
-    "tailwindcss": "4.3.3"
+    "tailwindcss": "4.3.3",
+    "@pcc/domain": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

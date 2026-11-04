@@ -12,6 +12,8 @@ export interface Env {
   readonly EXTRACTION_MODEL?: string;
   /** Fault injection for the demo: "compromised-schema" | "compromised-fabricated". */
   readonly EXTRACTION_MODE?: string;
+  /** Demo only: lets the client backdate `receivedAt` so cooling-off can be shown as elapsed. */
+  readonly DEMO_MODE?: string;
 }
 
 interface EmailInput {
@@ -68,7 +70,11 @@ export default {
     }
 
     if (action === "intake") {
-      const body = await request.json<{ vendor: Vendor; email: EmailInput }>();
+      const body = await request.json<{
+        vendor: Vendor;
+        email: EmailInput;
+        receivedAt?: number;
+      }>();
       const extractor = createExtractor(env);
 
       let extracted;
@@ -85,7 +91,10 @@ export default {
       const changeRequest: ChangeRequest = {
         id,
         vendorId: body.vendor.id,
-        receivedAt: Date.now(),
+        receivedAt:
+          env.DEMO_MODE === "1" && typeof body.receivedAt === "number"
+            ? body.receivedAt
+            : Date.now(),
         rawBody: body.email.rawBody,
         extraction: extracted.extraction,
       };

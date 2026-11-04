@@ -1,62 +1,130 @@
-import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { usersQueryOptions } from "@/lib/users.js";
+import { getState, type RequestState } from "@/lib/api.js";
+import { DEMO_REQUESTS, seedAll } from "@/lib/demo.js";
 
 export const Route = createFileRoute("/")({
-  loader: ({ context }) => {
-    void context.queryClient.prefetchQuery(usersQueryOptions);
-  },
   component: IndexRoute,
 });
 
+interface Row {
+  readonly id: string;
+  readonly title: string;
+  readonly subtitle: string;
+  readonly state: RequestState | null;
+}
+
+const statusStyle: Record<string, string> = {
+  approved: "bg-emerald-100 text-emerald-800",
+  rejected: "bg-red-100 text-red-800",
+  blocked: "bg-red-100 text-red-800",
+  cooling_off: "bg-amber-100 text-amber-800",
+  ready_for_review: "bg-sky-100 text-sky-800",
+  unknown: "bg-stone-100 text-stone-600",
+};
+
+const label = (state: RequestState | null): string => {
+  if (state === null) return "not loaded";
+  if (state.status === "approved") return "approved";
+  if (state.evaluation.outcome === "reject") return "rejected";
+  const blocking = state.evaluation.reasons.filter((r) => r.blocking).length;
+  if (blocking > 0) return "blocked";
+  return state.status === "cooling_off" ? "cooling off" : "ready for review";
+};
+
 function IndexRoute() {
-  const usersQuery = useQuery(usersQueryOptions);
+  const queryClient = useQueryClient();
+
+  const statesQuery = useQuery({
+    queryKey: ["states"],
+    queryFn: async (): Promise<ReadonlyArray<Row>> =>
+      Promise.all(
+        DEMO_REQUESTS.map(async (demo) => {
+          try {
+            const result = await getState(demo.id);
+            return { id: demo.id, title: demo.title, subtitle: demo.subtitle, state: result.state };
+          } catch {
+            return { id: demo.id, title: demo.title, subtitle: demo.subtitle, state: null };
+          }
+        }),
+      ),
+    refetchInterval: 4000,
+  });
+
+  const seedMutation = useMutation({
+    mutationFn: seedAll,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["states"] }),
+  });
+
+  const rows = statesQuery.data ?? [];
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ecfeff,_transparent_34rem),linear-gradient(135deg,_#fafaf9,_#f5f5f4)] px-6 py-10 text-stone-950">
-      <section className="mx-auto flex max-w-4xl flex-col gap-8">
-        <div className="space-y-3">
+      <section className="mx-auto flex max-w-6xl flex-col gap-8">
+        <header className="space-y-3">
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-cyan-700">
-            Effect starter
+            Payment change control
           </p>
-          <h1 className="max-w-2xl text-5xl font-semibold tracking-tight">
-            React client, Effect Platform API, shared contracts.
+          <h1 className="max-w-3xl text-5xl font-semibold tracking-tight">
+            The model reads the email. Code decides. A human approves.
           </h1>
           <p className="max-w-2xl text-lg text-stone-600">
-            TanStack Query calls an Effect HttpApiClient generated from the same API contract the
-            server implements.
+            Every decision has exactly one owner. There is no code path from a model output to a
+            changed bank account.
           </p>
+        </header>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
+            {seedMutation.isPending ? "Loading…" : "Load demo data"}
+          </Button>
+          <span className="text-sm text-stone-500">
+            {seedMutation.isError
+              ? "Could not reach the API. Is the worker running on :8787?"
+              : "Seeds six requests, then refreshes every few seconds."}
+          </span>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Users</CardTitle>
-            <CardDescription>Read-only example backed by Drizzle and PostgreSQL.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button onClick={() => void usersQuery.refetch()} disabled={usersQuery.isFetching}>
-              {usersQuery.isFetching ? "Loading..." : "Refetch"}
-            </Button>
-
-            {usersQuery.isError ? (
-              <p className="text-sm text-red-700">Could not load users. Is the API running?</p>
-            ) : usersQuery.data?.length ? (
-              <ul className="space-y-2">
-                {usersQuery.data.map((user) => (
-                  <li key={user.id} className="rounded-md border border-stone-200 bg-white p-3">
-                    {user.name}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="rounded-md border border-dashed border-stone-300 bg-white/70 p-4 text-sm text-stone-600">
-                No users yet. The starter intentionally ships without seed data.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2">
+          {rows.map((row) => {
+            const status = label(row.state);
+            return (
+              <Link key={row.id} to="/requests/$id" params={{ id: row.id }} className="block">
+                <Card className="h-full transition-colors hover:border-stone-400">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-xl">{row.title}</CardTitle>
+                        <CardDescription className="mt-1">{row.subtitle}</CardDescription>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
+                          statusStyle[status] ?? statusStyle["unknown"]
+                        }`}
+                      >
+                        {status}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0 text-sm text-stone-600">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs text-stone-400">{row.id}</span>
+                      <span>
+                        {row.state === null
+                          ? "—"
+                          : `${row.state.evaluation.reasons.length} finding${
+                              row.state.evaluation.reasons.length === 1 ? "" : "s"
+                            }`}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
       </section>
     </main>
   );

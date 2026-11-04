@@ -49,6 +49,26 @@ POST /api/requests/:id/approve   { approverId, actor? }
 GET  /api/requests/:id/state
 ```
 
+## The demo
+
+```sh
+pnpm --filter @pcc/worker dev    # :8787
+pnpm --filter @pcc/web dev       # :5173
+```
+
+Open http://localhost:5173 and press **Load demo data**. Six requests appear: one clean,
+four attacks, one declined at intake.
+
+`DEMO_MODE=1` (set in `wrangler.jsonc`) lets the client backdate `receivedAt` so the
+cooling-off period can be shown as already elapsed. Remove it for anything real.
+
+On a request page you get:
+
+- the email, with citation-checked spans highlighted
+- the findings, each tagged with its owner
+- the authority table, rendered from the same config the gate enforces
+- **Try to approve as the model**, which returns `403 authority_violation`
+
 ## Extraction
 
 `apps/worker/src/extraction` turns an email into claims. The model may only return
