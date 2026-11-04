@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { getState, type RequestState } from "@/lib/api.js";
-import { DEMO_REQUESTS, seedAll } from "@/lib/demo.js";
+import { getState, seedEml, type RequestState } from "@/lib/api.js";
+import { DEMO_REQUESTS, DEMO_VENDOR, seedAll } from "@/lib/demo.js";
 import { formatMoney } from "@/lib/money.js";
 
 export const Route = createFileRoute("/")({
@@ -37,6 +38,9 @@ const label = (state: RequestState | null): string => {
 
 function IndexRoute() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const statesQuery = useQuery({
     queryKey: ["states"],
@@ -57,6 +61,20 @@ function IndexRoute() {
       );
     },
     refetchInterval: 4000,
+  });
+
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const text = await file.text();
+      const id = `import-${Date.now()}`;
+      await seedEml(id, DEMO_VENDOR, text);
+      return id;
+    },
+    onMutate: () => setImportError(null),
+    onSuccess: (id) => {
+      void navigate({ to: "/requests/$id", params: { id } });
+    },
+    onError: (error: Error) => setImportError(error.message),
   });
 
   const seedMutation = useMutation({
@@ -86,10 +104,30 @@ function IndexRoute() {
           <Button onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
             {seedMutation.isPending ? "Loading…" : "Load demo data"}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => fileInput.current?.click()}
+            disabled={importMutation.isPending}
+          >
+            {importMutation.isPending ? "Parsing…" : "Import .eml"}
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".eml,message/rfc822,text/plain"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file !== undefined) importMutation.mutate(file);
+              event.target.value = "";
+            }}
+          />
           <span className="text-sm text-stone-500">
-            {seedMutation.isError
-              ? "Could not reach the API. Is the worker running on :8787?"
-              : "Seeds six requests, then refreshes every few seconds."}
+            {importError !== null
+              ? importError
+              : seedMutation.isError
+                ? "Could not reach the API. Is the worker running on :8787?"
+                : "Seeds six requests, then refreshes every few seconds."}
           </span>
         </div>
 
