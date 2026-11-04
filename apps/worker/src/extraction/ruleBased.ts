@@ -1,7 +1,7 @@
 import { anchorClaims, type ProposedClaim } from "@pcc/domain";
 import { ExtractionError, type ExtractionInput, type ExtractionOutcome, type Extractor } from "./types.js";
 
-const IBAN = /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,6}(?: ?[A-Z0-9]{1,3})?\b/g;
+const IBAN = /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,6}(?: ?[A-Z0-9]{1,3})?\b/gi;
 const PHONE = /\+?\d[\d\s()-]{7,}\d/g;
 
 /**

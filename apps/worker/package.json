@@ -8,7 +8,8 @@
     "build": "wrangler deploy --dry-run --outdir dist",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "vp test run --passWithNoTests"
+    "test": "vp test run --passWithNoTests",
+    "evals": "vp test run src/evals --disableConsoleIntercept"
   },
   "dependencies": {
     "@pcc/contracts": "workspace:*",

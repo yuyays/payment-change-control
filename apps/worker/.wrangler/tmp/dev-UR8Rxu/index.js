@@ -529,7 +529,7 @@ var ChatExtractor = class {
 };
 
 // src/extraction/ruleBased.ts
-var IBAN = /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,6}(?: ?[A-Z0-9]{1,3})?\b/g;
+var IBAN = /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,6}(?: ?[A-Z0-9]{1,3})?\b/gi;
 var PHONE = /\+?\d[\d\s()-]{7,}\d/g;
 var RuleBasedExtractor = class {
   static {
