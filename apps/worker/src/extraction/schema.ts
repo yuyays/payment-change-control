@@ -8,8 +8,10 @@ const MAX_QUOTE = 500;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const CLAIM_FIELD_SET: ReadonlySet<string> = new Set(CLAIM_FIELDS);
+
 const isClaimField = (value: unknown): value is ClaimField =>
-  typeof value === "string" && (CLAIM_FIELDS as ReadonlyArray<string>).includes(value);
+  typeof value === "string" && CLAIM_FIELD_SET.has(value);
 
 export interface ParsedExtraction {
   readonly claims: ReadonlyArray<ProposedClaim>;
