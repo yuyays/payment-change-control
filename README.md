@@ -103,6 +103,7 @@ The evals found two real bugs, both in the design rather than the model:
 - [DESIGN.md](DESIGN.md) — the design doc, including prior art, the counter-position, and what
   the evals do not prove
 - [DEMO.md](DEMO.md) — a two-minute walkthrough
+- [docs/POST.md](docs/POST.md) — the write-up, for people who want the narrative
 - [EVALS.md](EVALS.md) / [EVALS-MODEL.md](EVALS-MODEL.md) — eval reports
 - [AGENTS.md](AGENTS.md) — the rules the code follows
 
