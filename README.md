@@ -70,8 +70,22 @@ EXTRACTION_MODEL      # default gpt-4o-mini
 
 Without a key, a regex extractor runs so the app works offline.
 
+## Fault injection (the demo)
+
+`EXTRACTION_MODE` swaps in a hostile extractor. It is a demo switch, not a feature.
+
+| Attack | Mode / call | Which layer stops it | Result |
+| --- | --- | --- | --- |
+| Model returns a verdict | `EXTRACTION_MODE=compromised-schema` | strict schema | `422 invalid_model_output` |
+| Model invents a callback number | `EXTRACTION_MODE=compromised-fabricated` | anchoring | quote dropped, never reaches the evaluator |
+| Model tries to approve | `POST /approve {"actor":"model"}` | authority gate | `403 authority_violation` |
+
+An injection with **no other signal** is deliberately not blocked. It is
+indistinguishable from a legitimate request, and blocking on the phrase would be
+trivially evadable. The property that holds is that it has no effect: no claims, no
+decision change, no route to approval.
+
 ## What is not built yet
 
-- The eval suite and the "compromised model" fault-injection switch
 - The UI rewiring from the starter's `users` example
 - Replay from the event log

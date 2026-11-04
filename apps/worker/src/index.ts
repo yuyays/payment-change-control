@@ -10,6 +10,8 @@ export interface Env {
   readonly EXTRACTION_API_KEY?: string;
   readonly EXTRACTION_BASE_URL?: string;
   readonly EXTRACTION_MODEL?: string;
+  /** Fault injection for the demo: "compromised-schema" | "compromised-fabricated". */
+  readonly EXTRACTION_MODE?: string;
 }
 
 interface EmailInput {

@@ -9,3 +9,5 @@ packages/create-effect-starter/template
 
 .tanstack
 .output
+
+.wrangler

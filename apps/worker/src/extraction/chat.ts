@@ -51,6 +51,7 @@ export class ChatExtractor implements Extractor {
     const url = `${this.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
     const response = await fetch(url, {
       method: "POST",
+      signal: AbortSignal.timeout(20_000),
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${this.config.apiKey}`,
