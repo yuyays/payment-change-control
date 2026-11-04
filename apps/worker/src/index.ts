@@ -30,6 +30,16 @@ const json = (body: unknown, status = 200): Response =>
     headers: { "content-type": "application/json" },
   });
 
+const normaliseAmount = (
+  value: { currency: string; minor: number } | undefined,
+): { currency: string; minor: number } | undefined => {
+  if (value === undefined) return undefined;
+  const currency = value.currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) return undefined;
+  if (!Number.isFinite(value.minor) || value.minor < 0) return undefined;
+  return { currency, minor: Math.round(value.minor) };
+};
+
 const failure = (error: unknown): Response =>
   error instanceof ExtractionError
     ? json({ error: error.code, message: error.message }, 422)
@@ -76,6 +86,7 @@ export default {
         vendor: Vendor;
         email: EmailInput;
         receivedAt?: number;
+        amount?: { currency: string; minor: number };
       }>();
       const extractor = createExtractor(env);
 
@@ -90,6 +101,8 @@ export default {
         return failure(error);
       }
 
+      const amount = normaliseAmount(body.amount);
+
       const changeRequest: ChangeRequest = {
         id,
         vendorId: body.vendor.id,
@@ -99,6 +112,7 @@ export default {
             : Date.now(),
         rawBody: body.email.rawBody,
         extraction: extracted.extraction,
+        ...(amount === undefined ? {} : { amount }),
       };
 
       const stub = env.CHANGE_REQUEST.get(env.CHANGE_REQUEST.idFromName(id));

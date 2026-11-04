@@ -13,6 +13,13 @@ export interface BankAccount {
   readonly iban: string;
 }
 
+export interface Money {
+  /** ISO 4217 code, e.g. "JPY", "USD". */
+  readonly currency: string;
+  /** Minor units: yen for JPY, cents for USD. Never a float. */
+  readonly minor: number;
+}
+
 export interface Vendor {
   readonly id: string;
   readonly name: string;
@@ -59,6 +66,8 @@ export interface ChangeRequest {
   readonly id: string;
   readonly vendorId: string;
   readonly receivedAt: number;
+  /** The payment at risk, supplied by the payment system. Optional. */
+  readonly amount?: Money;
   /** Raw email text the citations point into. Untrusted input. */
   readonly rawBody: string;
   readonly extraction: ExtractedEmail;
