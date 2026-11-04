@@ -1,0 +1,32 @@
+{
+  "name": "@pcc/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "default": "./dist/http/index.js"
+    },
+    "./schemas/user": {
+      "types": "./dist/schemas/user.d.ts",
+      "default": "./dist/schemas/user.js"
+    }
+  },
+  "scripts": {
+    "build": "effect-tsgo tsc -p tsconfig.build.json",
+    "typecheck": "effect-tsgo tsc --noEmit",
+    "test": "vp test run",
+    "dev": "effect-tsgo tsc -p tsconfig.build.json --watch --preserveWatchOutput"
+  },
+  "dependencies": {
+    "effect": "^4.1.1"
+  },
+  "devDependencies": {
+    "vite-plus": "1.4.0"
+  }
+}

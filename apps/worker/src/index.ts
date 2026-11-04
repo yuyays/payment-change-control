@@ -1,0 +1,115 @@
+import type { ChangeRequest, Vendor } from "@pcc/domain";
+import { ChangeRequestDO } from "./ChangeRequestDO.js";
+import { createExtractor, ExtractionError } from "./extraction/index.js";
+
+export { ChangeRequestDO };
+
+export interface Env {
+  readonly CHANGE_REQUEST: DurableObjectNamespace<ChangeRequestDO>;
+  /** Set to use a real model. Without it, the offline regex extractor runs. */
+  readonly EXTRACTION_API_KEY?: string;
+  readonly EXTRACTION_BASE_URL?: string;
+  readonly EXTRACTION_MODEL?: string;
+}
+
+interface EmailInput {
+  readonly rawBody: string;
+  readonly fromAddress: string;
+  readonly replyTo?: string | null;
+}
+
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+
+const failure = (error: unknown): Response =>
+  error instanceof ExtractionError
+    ? json({ error: error.code, message: error.message }, 422)
+    : json({ error: "internal" }, 500);
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/api/health") {
+      return json({ ok: true, service: "payment-change-control" });
+    }
+
+    const match = /^\/api\/requests\/([A-Za-z0-9_-]+)\/(intake|approve|state|extract)$/.exec(
+      url.pathname,
+    );
+    if (match === null) return json({ error: "not_found" }, 404);
+
+    const id = match[1];
+    const action = match[2];
+    if (id === undefined || action === undefined) return json({ error: "not_found" }, 404);
+
+    if (action === "extract") {
+      const body = await request.json<{ email: EmailInput }>();
+      const extractor = createExtractor(env);
+      try {
+        const outcome = await extractor.extract({
+          rawBody: body.email.rawBody,
+          fromAddress: body.email.fromAddress,
+          replyTo: body.email.replyTo ?? null,
+        });
+        return json({
+          provider: outcome.provider,
+          extraction: outcome.extraction,
+          dropped: outcome.dropped,
+        });
+      } catch (error) {
+        return failure(error);
+      }
+    }
+
+    if (action === "intake") {
+      const body = await request.json<{ vendor: Vendor; email: EmailInput }>();
+      const extractor = createExtractor(env);
+
+      let extracted;
+      try {
+        extracted = await extractor.extract({
+          rawBody: body.email.rawBody,
+          fromAddress: body.email.fromAddress,
+          replyTo: body.email.replyTo ?? null,
+        });
+      } catch (error) {
+        return failure(error);
+      }
+
+      const changeRequest: ChangeRequest = {
+        id,
+        vendorId: body.vendor.id,
+        receivedAt: Date.now(),
+        rawBody: body.email.rawBody,
+        extraction: extracted.extraction,
+      };
+
+      const stub = env.CHANGE_REQUEST.get(env.CHANGE_REQUEST.idFromName(id));
+      const response = await stub.fetch(
+        new Request("https://do/intake", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ request: changeRequest, vendor: body.vendor }),
+        }),
+      );
+
+      const result = await response.json<Record<string, unknown>>();
+      return json(
+        { ...result, provider: extracted.provider, dropped: extracted.dropped },
+        response.status,
+      );
+    }
+
+    const stub = env.CHANGE_REQUEST.get(env.CHANGE_REQUEST.idFromName(id));
+    const init: RequestInit =
+      request.method === "GET"
+        ? { method: "GET", headers: request.headers }
+        : { method: request.method, headers: request.headers, body: await request.text() };
+
+    return stub.fetch(new Request(`https://do/${action}`, init));
+  },
+};

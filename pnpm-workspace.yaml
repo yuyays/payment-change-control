@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+minimumReleaseAge: 1440
+allowBuilds:
+  esbuild: true
+  workerd: true
+overrides:
+  "vite@*": npm:@voidzero-dev/vite-plus-core@1.4.0
+  "vitest@*": 5.0.5
+
+peerDependencyRules:
+  allowedVersions:
+    vite: "1.4.0"

@@ -1,0 +1,31 @@
+{
+  "name": "payment-change-control",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vp run @pcc/contracts#build && vp run --filter \"@pcc/*\" --parallel dev",
+    "dev:web": "vp run @pcc/contracts#build && vp run --filter @pcc/web --filter @pcc/contracts --parallel dev",
+    "dev:worker": "vp run @pcc/contracts#build && vp run --filter @pcc/worker dev",
+    "build": "vp run --filter \"@pcc/*\" build",
+    "typecheck": "vp run @pcc/contracts#build && vp run @pcc/domain#build && vp run --filter \"@pcc/*\" typecheck",
+    "test": "vp run --filter @pcc/domain test && vp run --filter @pcc/contracts test",
+    "lint": "vp lint .",
+    "format:check": "vp fmt . --check",
+    "prepare": "effect-tsgo patch --typescript"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.63.0",
+    "typescript": "7.0.2",
+    "vite-plus": "1.4.0"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "packageManager": "pnpm@11.28.6"
+}
