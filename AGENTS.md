@@ -30,4 +30,6 @@
 
 - Domain rules: unit tests, no mocks.
 - Failure injection lives in `apps/worker`: bad JSON, fabricated citation, model-approves,
-  duplicate approval, eviction during cooling off.
+  duplicate approval.
+- `scripts/durability.sh` proves the alarm and persistence against real workerd. It restarts
+  the process mid-flow; keep it passing.

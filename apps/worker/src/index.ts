@@ -14,6 +14,8 @@ export interface Env {
   readonly EXTRACTION_MODE?: string;
   /** Demo only: lets the client backdate `receivedAt` so cooling-off can be shown as elapsed. */
   readonly DEMO_MODE?: string;
+  /** Test hook: override the cooling-off period in seconds. Absent means 48 hours. */
+  readonly COOLING_OFF_SECONDS?: string;
 }
 
 interface EmailInput {

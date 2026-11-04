@@ -7,6 +7,7 @@ import {
   type ApprovalResult,
   type ChangeRequest,
   type Evaluation,
+  type Policy,
   type Vendor,
 } from "@pcc/domain";
 import { DurableObject } from "cloudflare:workers";
@@ -61,6 +62,15 @@ export class ChangeRequestDO extends DurableObject<Env> {
     return (await this.ctx.storage.get<StoredState>("state")) ?? null;
   }
 
+  /** The cooling-off period is 48h in production. Tests can shorten it. */
+  private policy(): Policy {
+    const seconds = Number(this.env.COOLING_OFF_SECONDS ?? "");
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return { ...DEFAULT_POLICY, coolingOffHours: seconds / 3600 };
+    }
+    return DEFAULT_POLICY;
+  }
+
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
@@ -93,7 +103,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
   private async intake(input: { request: ChangeRequest; vendor: Vendor }): Promise<Response> {
     const now = Date.now();
-    const evaluation = evaluate(input.request, input.vendor, now, DEFAULT_POLICY);
+    const evaluation = evaluate(input.request, input.vendor, now, this.policy());
 
     const state: StoredState = {
       request: input.request,
@@ -134,7 +144,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
     let result: ApprovalResult;
     try {
-      result = approve(state.evaluation, approvals, now, DEFAULT_POLICY);
+      result = approve(state.evaluation, approvals, now, this.policy());
     } catch (error) {
       if (error instanceof AuthorityViolation) {
         this.append("authority.violation", {
@@ -173,7 +183,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
     if (state === null) return new Response("No request", { status: 404 });
 
     const evaluatedAt = state.evaluatedAt ?? state.request.receivedAt;
-    const replayed = evaluate(state.request, state.vendor, evaluatedAt, DEFAULT_POLICY);
+    const replayed = evaluate(state.request, state.vendor, evaluatedAt, this.policy());
 
     const codes = (evaluation: Evaluation): ReadonlyArray<string> =>
       evaluation.reasons.map((reason) => reason.code).sort();

@@ -17,7 +17,8 @@
     "test": "vp run --filter @pcc/domain test && vp run --filter @pcc/contracts test",
     "lint": "vp lint .",
     "format:check": "vp fmt . --check",
-    "prepare": "effect-tsgo patch --typescript"
+    "prepare": "effect-tsgo patch --typescript",
+    "test:do": "bash scripts/durability.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "0.63.0",

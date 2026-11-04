@@ -101,6 +101,24 @@ EXTRACTION_API_KEY=... EXTRACTION_MODEL=gpt-6-luna \
 30 cases, 0 fraud escapes, 0 auto-approvals. The real-model run on `gpt-6-luna` is in
 [EVALS-MODEL.md](EVALS-MODEL.md); the offline baseline is in [EVALS.md](EVALS.md).
 
+## Durability
+
+```sh
+pnpm test:do
+```
+
+Starts the real worker in workerd with an 8-second cooling-off, lets the alarm fire,
+kills the process, restarts it against the same storage, and then fires concurrent
+approvals. Seven checks, no mocks:
+
+```
+PASS  status is cooling_off immediately after intake
+PASS  alarm fired and moved the request to ready_for_review
+PASS  state rehydrated after restart
+PASS  two concurrent identical approvals are not enough
+PASS  two distinct approvers approve
+```
+
 ## Fault injection (the demo)
 
 `EXTRACTION_MODE` swaps in a hostile extractor. It is a demo switch, not a feature.
