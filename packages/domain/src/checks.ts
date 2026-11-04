@@ -90,11 +90,7 @@ export function coolingOffRemaining(
 }
 
 /** True when the vendor changed bank details recently — a known fraud amplifier. */
-export function changedRecently(
-  vendor: Vendor,
-  now: number,
-  windowDays: number,
-): boolean {
+export function changedRecently(vendor: Vendor, now: number, windowDays: number): boolean {
   if (vendor.lastBankChangeAt === null) return false;
   return now - vendor.lastBankChangeAt < windowDays * 24 * 60 * 60 * 1000;
 }
@@ -116,6 +112,8 @@ export function isWellFormedValue(field: ClaimField, value: string): boolean {
     }
     case "bankName":
       return value.trim().length >= 2;
+    default:
+      return false;
   }
 }
 
@@ -156,9 +154,7 @@ export function ibanChecksumValid(compact: string): boolean {
   let remainder = 0;
   for (const character of rearranged) {
     const numeric =
-      character >= "A" && character <= "Z"
-        ? String(character.charCodeAt(0) - 55)
-        : character;
+      character >= "A" && character <= "Z" ? String(character.charCodeAt(0) - 55) : character;
     if (numeric < "0" || numeric > "9") return false;
     for (const digit of numeric) {
       remainder = (remainder * 10 + Number(digit)) % 97;

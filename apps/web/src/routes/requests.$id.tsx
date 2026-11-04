@@ -109,9 +109,7 @@ function RequestRoute() {
         </div>
 
         <header className="space-y-1">
-          <p className="text-sm uppercase tracking-[0.2em] text-stone-500">
-            {state.vendor.name}
-          </p>
+          <p className="text-sm uppercase tracking-[0.2em] text-stone-500">{state.vendor.name}</p>
           <h1 className="text-3xl font-semibold">
             {state.evaluation.outcome === "reject" ? "Rejected at intake" : "Pending human review"}
           </h1>
@@ -264,7 +262,9 @@ function RequestRoute() {
                 <p>
                   <span
                     className={
-                      replayResult.decision.same ? "font-medium text-emerald-700" : "font-medium text-red-700"
+                      replayResult.decision.same
+                        ? "font-medium text-emerald-700"
+                        : "font-medium text-red-700"
                     }
                   >
                     {replayResult.decision.same ? "Identical decision" : "Decision changed"}
@@ -286,8 +286,8 @@ function RequestRoute() {
                 {replayResult.claims === null ? null : (
                   <div className="space-y-1 rounded-md bg-stone-50 p-3 text-xs text-stone-700">
                     <p className="font-medium">
-                      {replayResult.claims.extractor} · stored {replayResult.claims.stored} · replayed{" "}
-                      {replayResult.claims.replayed}
+                      {replayResult.claims.extractor} · stored {replayResult.claims.stored} ·
+                      replayed {replayResult.claims.replayed}
                     </p>
                     {replayResult.claims.diff.added.length > 0 ? (
                       <p className="text-emerald-700">

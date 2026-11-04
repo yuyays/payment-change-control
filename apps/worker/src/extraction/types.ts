@@ -13,10 +13,7 @@ export interface ExtractionOutcome {
   readonly provider: string;
 }
 
-export type ExtractionErrorCode =
-  | "provider_error"
-  | "invalid_model_output"
-  | "empty_email";
+export type ExtractionErrorCode = "provider_error" | "invalid_model_output" | "empty_email";
 
 export class ExtractionError extends Error {
   readonly _tag = "ExtractionError";

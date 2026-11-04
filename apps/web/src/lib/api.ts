@@ -72,15 +72,32 @@ export interface SeedPayload {
 const base = import.meta.env.VITE_API_URL ?? "";
 const url = (path: string): string => `${base}/api${path}`;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const messageOf = (body: unknown, status: number): string => {
+  if (isRecord(body)) {
+    const message = body["message"];
+    if (typeof message === "string") return message;
+    const error = body["error"];
+    if (typeof error === "string") {
+      const expected = body["expected"];
+      return typeof expected === "string" ? `${error} (owner: ${expected})` : error;
+    }
+    const reason = body["reason"];
+    if (typeof reason === "string") return reason;
+  }
+  return `HTTP ${status}`;
+};
+
+/**
+ * Unchecked JSON boundary. The worker owns these shapes; this client does not
+ * validate them field by field.
+ */
 const json = async <T>(response: Response): Promise<T> => {
   const body: unknown = await response.json();
-  if (!response.ok) {
-    const message =
-      typeof body === "object" && body !== null && "message" in body
-        ? String((body as { message: unknown }).message)
-        : `HTTP ${response.status}`;
-    throw new Error(message);
-  }
+  if (!response.ok) throw new Error(messageOf(body, response.status));
+  // eslint-disable-next-line typescript/no-unsafe-type-assertion -- HTTP boundary; the shape is owned by the worker
   return body as T;
 };
 
@@ -122,23 +139,21 @@ export const replay = (
     body: JSON.stringify({ extractor }),
   }).then((r) => json<ReplayResult>(r));
 
-export const approve = (
+export const approve = async (
   id: string,
   approverId: string,
   actor: "human" | "model" = "human",
-): Promise<{ ok: boolean; reason?: string }> =>
-  fetch(url(`/requests/${id}/approve`), {
+): Promise<{ ok: boolean; reason?: string }> => {
+  const response = await fetch(url(`/requests/${id}/approve`), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ approverId, actor }),
-  }).then(async (r) => {
-    const body: unknown = await r.json();
-    if (!r.ok) {
-      const record = body as { reason?: string; error?: string; expected?: string };
-      throw new Error(
-        record.reason ??
-          `${record.error ?? "refused"}${record.expected ? ` (owner: ${record.expected})` : ""}`,
-      );
-    }
-    return body as { ok: boolean; reason?: string };
   });
+
+  const body: unknown = await response.json();
+  if (!response.ok) throw new Error(messageOf(body, response.status));
+  if (!isRecord(body) || typeof body["ok"] !== "boolean") {
+    throw new Error("Malformed approval response.");
+  }
+  return { ok: body["ok"] };
+};

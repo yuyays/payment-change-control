@@ -73,15 +73,15 @@ There is no automatic approval state. The best a request can reach without a hum
 
 `packages/domain/src/authority.ts` is the single source of truth:
 
-| Decision | Owner |
-| --- | --- |
-| Extract claims from the email | model |
-| Verify a citation is verbatim | code |
-| Compare sender domain to the vendor master | code |
-| Decide whether a callback number is trustworthy | code |
-| Enforce the cooling-off period | code |
-| Approve the change | human |
-| Release payment | human |
+| Decision                                        | Owner |
+| ----------------------------------------------- | ----- |
+| Extract claims from the email                   | model |
+| Verify a citation is verbatim                   | code  |
+| Compare sender domain to the vendor master      | code  |
+| Decide whether a callback number is trustworthy | code  |
+| Enforce the cooling-off period                  | code  |
+| Approve the change                              | human |
+| Release payment                                 | human |
 
 `assertAuthority(action, actor)` throws `AuthorityViolation` when the wrong actor acts. The UI
 renders the same exported table, so what is on screen is what is enforced — there is no second
@@ -136,15 +136,15 @@ suite asserts this as `hn-injection-alone`.
 
 ## 7. Deterministic checks
 
-| Code | Blocking | Meaning |
-| --- | --- | --- |
-| `claim.citation.invalid` | yes | quote not present at the computed span |
-| `sender.domain.lookalike` | yes | e.g. `acme-industria1.com` vs `acme-industrial.com` |
-| `sender.domain.mismatch` | yes | a different registrable domain |
-| `replyTo.mismatch` | yes | Reply-To differs from the sender domain |
-| `callback.untrusted` | yes | the number came from the email, not the vendor master |
-| `vendor.changed_recently` | no | changed within 180 days |
-| `cooling_off.pending` | yes | until `eligibleAt` |
+| Code                      | Blocking | Meaning                                               |
+| ------------------------- | -------- | ----------------------------------------------------- |
+| `claim.citation.invalid`  | yes      | quote not present at the computed span                |
+| `sender.domain.lookalike` | yes      | e.g. `acme-industria1.com` vs `acme-industrial.com`   |
+| `sender.domain.mismatch`  | yes      | a different registrable domain                        |
+| `replyTo.mismatch`        | yes      | Reply-To differs from the sender domain               |
+| `callback.untrusted`      | yes      | the number came from the email, not the vendor master |
+| `vendor.changed_recently` | no       | changed within 180 days                               |
+| `cooling_off.pending`     | yes      | until `eligibleAt`                                    |
 
 Domain comparison is deliberately simple and explainable: normalise, then lookalike if the
 labels are equal without hyphens or within edit distance 1–2 on the same TLD. It is not a
@@ -168,17 +168,17 @@ against the same storage, state rehydrates, concurrent approvals behave.
 
 ## 9. Failure model
 
-| Failure | Behaviour |
-| --- | --- |
-| Model returns malformed JSON | 422, request not created |
-| Model returns a verdict | 422, whole response rejected |
-| Model times out (60s) | 422, request not created |
-| Model quotes a fabricated number | quote dropped by anchoring |
-| Model quotes a truncated IBAN | dropped by mod-97 |
-| Process dies during cooling off | alarm fires after restart |
-| Duplicate approval click | distinct-approver count unchanged |
-| Model calls `/approve` with `actor: model` | 403 `authority_violation`, event logged |
-| Vendor record edited mid-flow | state holds a snapshot; not yet re-checked (open question) |
+| Failure                                    | Behaviour                                                  |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| Model returns malformed JSON               | 422, request not created                                   |
+| Model returns a verdict                    | 422, whole response rejected                               |
+| Model times out (60s)                      | 422, request not created                                   |
+| Model quotes a fabricated number           | quote dropped by anchoring                                 |
+| Model quotes a truncated IBAN              | dropped by mod-97                                          |
+| Process dies during cooling off            | alarm fires after restart                                  |
+| Duplicate approval click                   | distinct-approver count unchanged                          |
+| Model calls `/approve` with `actor: model` | 403 `authority_violation`, event logged                    |
+| Vendor record edited mid-flow              | state holds a snapshot; not yet re-checked (open question) |
 
 ## 10. Evals
 
@@ -189,14 +189,14 @@ against the same storage, state rehydrates, concurrent approvals behave.
 
 Latest real-model run (`gpt-6-luna`, see `EVALS-MODEL.md`):
 
-| Metric | Value |
-| --- | --- |
-| Fraud escapes | 0 / 11 |
-| Auto-approvals | 0 |
-| Citation validity | 100% |
-| IBAN recall | 100% |
-| Legit approvable | 100% |
-| Hard-negative approvable | 77.8% |
+| Metric                   | Value  |
+| ------------------------ | ------ |
+| Fraud escapes            | 0 / 11 |
+| Auto-approvals           | 0      |
+| Citation validity        | 100%   |
+| IBAN recall              | 100%   |
+| Legit approvable         | 100%   |
+| Hard-negative approvable | 77.8%  |
 
 The first real-model run scored **50% recall** because the model quoted the label with the
 value. That was a domain bug, not a model bug, and the offline regex extractor could never have

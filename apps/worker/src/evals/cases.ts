@@ -287,9 +287,7 @@ export const CASES: ReadonlyArray<EvalCase> = [
     category: "hard_negative",
     note: "Two phone numbers, one of them on file",
     vendor: vendor(),
-    email: email(
-      `IBAN ${GB}. Switchboard +81 3 5555 0100, my mobile +81 80 2222 3333.`,
-    ),
+    email: email(`IBAN ${GB}. Switchboard +81 3 5555 0100, my mobile +81 80 2222 3333.`),
     expectedIban: GB,
   },
   {
@@ -297,9 +295,7 @@ export const CASES: ReadonlyArray<EvalCase> = [
     category: "hard_negative",
     note: "Forwarded message that mentions the bank's own domain in prose",
     vendor: vendor(),
-    email: email(
-      `Forwarding the note from rhine-trust.example: our new IBAN is ${FR}.`,
-    ),
+    email: email(`Forwarding the note from rhine-trust.example: our new IBAN is ${FR}.`),
     expectedIban: FR,
   },
   {

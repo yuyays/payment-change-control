@@ -10,10 +10,7 @@ export interface ClaimDiff {
 }
 
 /** Compare two extracted claim sets by field + normalised value. */
-export function diffClaims(
-  before: ReadonlyArray<Claim>,
-  after: ReadonlyArray<Claim>,
-): ClaimDiff {
+export function diffClaims(before: ReadonlyArray<Claim>, after: ReadonlyArray<Claim>): ClaimDiff {
   const beforeKeys = new Set(before.map(claimKey));
   const afterKeys = new Set(after.map(claimKey));
 

@@ -12,15 +12,15 @@ The model reads the email. Code decides. A human approves.
 
 Most agent products put the model in charge and add guardrails afterwards. This one inverts it: every decision has exactly one owner, declared in [`packages/domain/src/authority.ts`](packages/domain/src/authority.ts), and the gate throws if the wrong actor tries to act.
 
-| Decision | Owner |
-| --- | --- |
-| Extract claims from the email | model |
-| Verify a citation is verbatim | code |
-| Compare sender domain to the vendor master | code |
-| Decide whether a callback number is trustworthy | code |
-| Enforce the cooling-off period | code |
-| Approve the change | human |
-| Release payment | human |
+| Decision                                        | Owner |
+| ----------------------------------------------- | ----- |
+| Extract claims from the email                   | model |
+| Verify a citation is verbatim                   | code  |
+| Compare sender domain to the vendor master      | code  |
+| Decide whether a callback number is trustworthy | code  |
+| Enforce the cooling-off period                  | code  |
+| Approve the change                              | human |
+| Release payment                                 | human |
 
 There is deliberately **no `approve` outcome** in `evaluate()`. The machine can only `reject` or `escalate`. Approval is a separate function that throws `AuthorityViolation` if a non-human actor is in the approval list.
 
@@ -127,11 +127,11 @@ PASS  two distinct approvers approve
 
 `EXTRACTION_MODE` swaps in a hostile extractor. It is a demo switch, not a feature.
 
-| Attack | Mode / call | Which layer stops it | Result |
-| --- | --- | --- | --- |
-| Model returns a verdict | `EXTRACTION_MODE=compromised-schema` | strict schema | `422 invalid_model_output` |
-| Model invents a callback number | `EXTRACTION_MODE=compromised-fabricated` | anchoring | quote dropped, never reaches the evaluator |
-| Model tries to approve | `POST /approve {"actor":"model"}` | authority gate | `403 authority_violation` |
+| Attack                          | Mode / call                              | Which layer stops it | Result                                     |
+| ------------------------------- | ---------------------------------------- | -------------------- | ------------------------------------------ |
+| Model returns a verdict         | `EXTRACTION_MODE=compromised-schema`     | strict schema        | `422 invalid_model_output`                 |
+| Model invents a callback number | `EXTRACTION_MODE=compromised-fabricated` | anchoring            | quote dropped, never reaches the evaluator |
+| Model tries to approve          | `POST /approve {"actor":"model"}`        | authority gate       | `403 authority_violation`                  |
 
 An injection with **no other signal** is deliberately not blocked. It is
 indistinguishable from a legitimate request, and blocking on the phrase would be

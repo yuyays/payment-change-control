@@ -57,11 +57,7 @@ describe("evaluate", () => {
 
   it("rejects a claim whose citation does not match the source text", () => {
     const forged = cite("iban", "DE89 3704 0044 0532 0130 00", 5);
-    const result = evaluate(
-      request({ claims: [forged] }),
-      vendor,
-      1 * HOUR,
-    );
+    const result = evaluate(request({ claims: [forged] }), vendor, 1 * HOUR);
     expect(result.outcome).toBe("reject");
     expect(result.reasons.some((r) => r.code === "claim.citation.invalid")).toBe(true);
   });
@@ -136,11 +132,7 @@ describe("evaluate", () => {
   it("rejects a single approver even when everything else is clean", () => {
     const at = 49 * HOUR;
     const result = evaluate(request(), vendor, at);
-    const outcome = approve(
-      result,
-      [{ actor: "human", approverId: "clerk", at }],
-      at,
-    );
+    const outcome = approve(result, [{ actor: "human", approverId: "clerk", at }], at);
     expect(outcome.ok).toBe(false);
   });
 });

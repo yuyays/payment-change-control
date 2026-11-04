@@ -11,17 +11,17 @@ EXTRACTION_API_KEY=... EXTRACTION_MODEL=gpt-6-luna \
 
 ## Headline
 
-| Metric | gpt-6-luna | rule-based (offline) |
-| --- | --- | --- |
-| Fraud escapes | **0 / 11** | 0 / 11 |
-| Auto-approvals | **0** | 0 |
-| Citation validity | **100%** | 100% |
-| IBAN recall | **100%** | 100% |
-| Legit approvable | **100%** | 100% |
-| Hard-negative approvable | **77.8%** | 66.7% |
-| Dropped quotes | 2 | 0 |
-| Errors | 0 | 0 |
-| Wall clock | 54.7s | 0.4s |
+| Metric                   | gpt-6-luna | rule-based (offline) |
+| ------------------------ | ---------- | -------------------- |
+| Fraud escapes            | **0 / 11** | 0 / 11               |
+| Auto-approvals           | **0**      | 0                    |
+| Citation validity        | **100%**   | 100%                 |
+| IBAN recall              | **100%**   | 100%                 |
+| Legit approvable         | **100%**   | 100%                 |
+| Hard-negative approvable | **77.8%**  | 66.7%                |
+| Dropped quotes           | 2          | 0                    |
+| Errors                   | 0          | 0                    |
+| Wall clock               | 54.7s      | 0.4s                 |
 
 The model is strictly better on hard negatives (77.8% vs 66.7%) and equal everywhere else.
 That is the expected shape: the deterministic checks do the safety work, so a better model
@@ -68,7 +68,7 @@ The first run, on `gpt-5-mini`, scored **50% IBAN recall** against the regex ext
 The cause was not the model being worse at reading. It was the model quoting the label:
 
 ```json
-{"field":"iban","quote":"New IBAN: FR14 2004 1010 0505 0001 3M02 606"}
+{ "field": "iban", "quote": "New IBAN: FR14 2004 1010 0505 0001 3M02 606" }
 ```
 
 The quote is verbatim, so anchoring found it — but the span is not a well-formed IBAN, so the

@@ -7,14 +7,7 @@ import {
   domainVerdict,
   normalizeDomain,
 } from "./checks.js";
-import type {
-  ChangeRequest,
-  Claim,
-  DecisionOwner,
-  Policy,
-  Reason,
-  Vendor,
-} from "./types.js";
+import type { ChangeRequest, Claim, DecisionOwner, Policy, Reason, Vendor } from "./types.js";
 
 export const DEFAULT_POLICY: Policy = {
   coolingOffHours: 48,
@@ -40,12 +33,12 @@ export interface Evaluation {
   readonly eligibleAt: number;
 }
 
-const reason = (
-  code: string,
-  detail: string,
-  owner: DecisionOwner,
-  blocking: boolean,
-): Reason => ({ code, detail, owner, blocking });
+const reason = (code: string, detail: string, owner: DecisionOwner, blocking: boolean): Reason => ({
+  code,
+  detail,
+  owner,
+  blocking,
+});
 
 export function evaluate(
   request: ChangeRequest,
@@ -184,9 +177,7 @@ export function approve(
     return { ok: false, reason: "This request was rejected and cannot be approved." };
   }
 
-  const blocking = evaluation.reasons.filter(
-    (r) => r.blocking && r.code !== "cooling_off.pending",
-  );
+  const blocking = evaluation.reasons.filter((r) => r.blocking && r.code !== "cooling_off.pending");
   if (blocking.length > 0) {
     return {
       ok: false,
@@ -198,9 +189,7 @@ export function approve(
     return { ok: false, reason: "Cooling-off period has not elapsed." };
   }
 
-  const humans = new Set(
-    approvals.filter((a) => a.actor === "human").map((a) => a.approverId),
-  );
+  const humans = new Set(approvals.filter((a) => a.actor === "human").map((a) => a.approverId));
   if (humans.size < policy.requiredApprovals) {
     return {
       ok: false,

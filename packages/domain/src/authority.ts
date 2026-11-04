@@ -30,9 +30,7 @@ export class AuthorityViolation extends Error {
     readonly expected: DecisionOwner,
     readonly actual: DecisionOwner,
   ) {
-    super(
-      `AuthorityViolation: ${action} is owned by "${expected}", but "${actual}" attempted it`,
-    );
+    super(`AuthorityViolation: ${action} is owned by "${expected}", but "${actual}" attempted it`);
     this.name = "AuthorityViolation";
   }
 }
@@ -50,5 +48,9 @@ export function assertAuthority(action: Action, actor: DecisionOwner): void {
   }
 }
 
+const isAction = (key: string): key is Action => key in AUTHORITY;
+
 export const authorityTable = (): ReadonlyArray<readonly [Action, DecisionOwner]> =>
-  Object.entries(AUTHORITY) as ReadonlyArray<readonly [Action, DecisionOwner]>;
+  Object.keys(AUTHORITY)
+    .filter(isAction)
+    .map((action) => [action, AUTHORITY[action]] as const);

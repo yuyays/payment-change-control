@@ -28,9 +28,7 @@ describe("anchorClaims", () => {
   });
 
   it("drops a truncated value even when the substring exists", () => {
-    const { anchored, dropped } = anchorClaims(BODY, [
-      { field: "iban", quote: "DE89" },
-    ]);
+    const { anchored, dropped } = anchorClaims(BODY, [{ field: "iban", quote: "DE89" }]);
     expect(anchored).toHaveLength(0);
     expect(dropped).toHaveLength(1);
   });

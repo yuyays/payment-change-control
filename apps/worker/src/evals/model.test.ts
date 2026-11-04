@@ -28,7 +28,6 @@ suite("eval suite (real model)", () => {
     });
 
     const run = await runCases(extractor);
-    // eslint-disable-next-line no-console
     console.log(formatReport(run));
 
     expect(run.metrics.fraudEscapes).toBe(0);

@@ -37,7 +37,7 @@ interface StoredState {
 export class ChangeRequestDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.blockConcurrencyWhile(async () => {
+    void ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS events (
           seq     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,10 +132,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
     return Response.json({ status, evaluation });
   }
 
-  private async handleApproval(
-    approverId: string,
-    actor: Approval["actor"],
-  ): Promise<Response> {
+  private async handleApproval(approverId: string, actor: Approval["actor"]): Promise<Response> {
     const state = await this.state();
     if (state === null) return new Response("No request", { status: 404 });
 
@@ -153,7 +150,12 @@ export class ChangeRequestDO extends DurableObject<Env> {
           actual: error.actual,
         });
         return Response.json(
-          { ok: false, error: "authority_violation", action: error.action, expected: error.expected },
+          {
+            ok: false,
+            error: "authority_violation",
+            action: error.action,
+            expected: error.expected,
+          },
           { status: 403 },
         );
       }

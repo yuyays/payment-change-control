@@ -3,9 +3,7 @@ import { parseExtraction } from "./schema.js";
 
 describe("parseExtraction", () => {
   it("accepts the claim schema", () => {
-    const parsed = parseExtraction(
-      '{"claims":[{"field":"iban","quote":"DE89 3704 0044"}]}',
-    );
+    const parsed = parseExtraction('{"claims":[{"field":"iban","quote":"DE89 3704 0044"}]}');
     expect(parsed?.claims).toHaveLength(1);
   });
 
@@ -19,9 +17,7 @@ describe("parseExtraction", () => {
   });
 
   it("rejects a response that carries a verdict", () => {
-    const parsed = parseExtraction(
-      '{"claims":[],"decision":"approve","risk":"low"}',
-    );
+    const parsed = parseExtraction('{"claims":[],"decision":"approve","risk":"low"}');
     expect(parsed).toBeNull();
   });
 
@@ -33,9 +29,7 @@ describe("parseExtraction", () => {
   });
 
   it("rejects an unknown field", () => {
-    expect(
-      parseExtraction('{"claims":[{"field":"accountNumber","quote":"123"}]}'),
-    ).toBeNull();
+    expect(parseExtraction('{"claims":[{"field":"accountNumber","quote":"123"}]}')).toBeNull();
   });
 
   it("rejects non-json", () => {
