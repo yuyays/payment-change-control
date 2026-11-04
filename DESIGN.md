@@ -212,9 +212,21 @@ rate (the rule of three: 3/n). It is evidence that the pipeline catches the elev
 was shown — not evidence that it catches fraud in general. The honest claim is **"no observed
 escapes in 30 cases."**
 
-The next eval step is adversarial generation rather than more hand-written cases: mutate a
-known-legitimate email one signal at a time and assert that the decision changes exactly when it
-should, and at no other time.
+### Adversarial mutations
+
+`pnpm --filter @pcc/worker evals:adversarial` takes each legitimate case and mutates one signal
+at a time — lookalike domain, foreign domain, Reply-To mismatch, attacker callback, truncated
+IBAN, bad checksum, injection, urgency, lower-case body, on-file phone. Ten bases × ten
+mutations = 100 assertions, each with an expected outcome: _blocked, with this reason_ or
+_unchanged, same reason set_.
+
+It found a real gap on its first run. Corrupt the IBAN in an email that also contains the
+number already on file, and the request stayed **approvable**: one valid `callbackPhone` claim
+was enough to reach `escalate`, and nothing required a bank account to be present. The fix is
+`claims.no_bank_details` — without a valid IBAN or bank name there is nothing to approve.
+
+That is the argument for generated cases over curated ones. The curated set never combined a
+bad IBAN with a good phone number, because the author did not think of it.
 
 The first real-model run scored **50% recall** because the model quoted the label with the
 value. That was a domain bug, not a model bug, and the offline regex extractor could never have

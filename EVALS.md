@@ -92,3 +92,25 @@ blocks with three findings.
   outcome is unchanged.
 - A regression baseline: store the per-case outcome and fail when any case changes
   category.
+
+## Adversarial mutations
+
+`pnpm --filter @pcc/worker evals:adversarial` derives 100 cases from the ten legitimate ones by
+changing exactly one signal, and asserts that the decision changes exactly when it should:
+
+| Mutation            | Expected                           |
+| ------------------- | ---------------------------------- |
+| lookalike domain    | blocked, `sender.domain.lookalike` |
+| foreign domain      | blocked, `sender.domain.mismatch`  |
+| Reply-To mismatch   | blocked, `replyTo.mismatch`        |
+| attacker callback   | blocked, `callback.untrusted`      |
+| truncated IBAN      | blocked, `claims.no_bank_details`  |
+| bad mod-97          | blocked, `claims.no_bank_details`  |
+| prompt injection    | unchanged                          |
+| urgency             | unchanged                          |
+| lower-case body     | unchanged                          |
+| on-file phone added | unchanged                          |
+
+First run: 16 failures, all one bug. A body containing the on-file phone number survived
+corruption of its IBAN, because one valid callback claim was enough to escalate and nothing
+required a bank account. Fixed by the `claims.no_bank_details` rule. Now 100 / 100.

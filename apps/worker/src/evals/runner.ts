@@ -1,6 +1,6 @@
 import { approve, evaluate, type ChangeRequest } from "@pcc/domain";
 import type { Extractor } from "../extraction/types.js";
-import { CASES } from "./cases.js";
+import { CASES, type EvalCase } from "./cases.js";
 
 export const EVAL_NOW = Date.UTC(2026, 10, 1);
 const HOUR = 3_600_000;
@@ -22,6 +22,7 @@ export interface Row {
   readonly claims: number;
   readonly dropped: number;
   readonly citationsValid: boolean;
+  readonly reasons: ReadonlyArray<string>;
   readonly error: boolean;
   readonly ibanRecalled: boolean | null;
 }
@@ -48,64 +49,69 @@ export interface EvalRun {
   readonly extractor: string;
 }
 
-export async function runCases(extractor: Extractor): Promise<EvalRun> {
-  const rows: Row[] = [];
-
-  for (const testCase of CASES) {
-    let extracted;
-    try {
-      extracted = await extractor.extract(testCase.email);
-    } catch (error) {
-      rows.push({
-        id: testCase.id,
-        category: testCase.category,
-        outcome: "error",
-        approvable: false,
-        blocking: 0,
-        claims: 0,
-        dropped: 0,
-        citationsValid: true,
-        error: true,
-        ibanRecalled: testCase.expectedIban === undefined ? null : false,
-      });
-      void error;
-      continue;
-    }
-    const request: ChangeRequest = {
-      id: testCase.id,
-      vendorId: testCase.vendor.id,
-      receivedAt: EVAL_NOW,
-      rawBody: testCase.email.rawBody,
-      extraction: extracted.extraction,
-    };
-
-    const evaluation = evaluate(request, testCase.vendor, EVAL_NOW + HOUR);
-    const approvable = approve(evaluation, APPROVERS, EVAL_NOW + 72 * HOUR).ok;
-    const claims = extracted.extraction.claims;
-
-    rows.push({
+export async function runCase(extractor: Extractor, testCase: EvalCase): Promise<Row> {
+  let extracted;
+  try {
+    extracted = await extractor.extract(testCase.email);
+  } catch (error) {
+    void error;
+    return {
       id: testCase.id,
       category: testCase.category,
-      outcome: evaluation.outcome,
-      approvable,
-      blocking: evaluation.reasons.filter((reason) => reason.blocking).length,
-      claims: claims.length,
-      dropped: extracted.dropped.length,
-      error: false,
-      citationsValid: claims.every(
-        (claim) =>
-          testCase.email.rawBody.slice(claim.citation.start, claim.citation.end) ===
-          claim.citation.quote,
-      ),
-      ibanRecalled:
-        testCase.expectedIban === undefined
-          ? null
-          : claims.some(
-              (claim) =>
-                claim.field === "iban" &&
-                compact(claim.value) === compact(testCase.expectedIban ?? ""),
-            ),
-    });
+      outcome: "error",
+      approvable: false,
+      blocking: 0,
+      claims: 0,
+      dropped: 0,
+      citationsValid: true,
+      reasons: ["error"],
+      error: true,
+      ibanRecalled: testCase.expectedIban === undefined ? null : false,
+    };
+  }
+
+  const request: ChangeRequest = {
+    id: testCase.id,
+    vendorId: testCase.vendor.id,
+    receivedAt: EVAL_NOW,
+    rawBody: testCase.email.rawBody,
+    extraction: extracted.extraction,
+  };
+
+  const evaluation = evaluate(request, testCase.vendor, EVAL_NOW + HOUR);
+  const approvable = approve(evaluation, APPROVERS, EVAL_NOW + 72 * HOUR).ok;
+  const claims = extracted.extraction.claims;
+
+  return {
+    id: testCase.id,
+    category: testCase.category,
+    outcome: evaluation.outcome,
+    approvable,
+    blocking: evaluation.reasons.filter((reason) => reason.blocking).length,
+    claims: claims.length,
+    dropped: extracted.dropped.length,
+    citationsValid: claims.every(
+      (claim) =>
+        testCase.email.rawBody.slice(claim.citation.start, claim.citation.end) ===
+        claim.citation.quote,
+    ),
+    reasons: evaluation.reasons.map((reason) => reason.code),
+    error: false,
+    ibanRecalled:
+      testCase.expectedIban === undefined
+        ? null
+        : claims.some(
+            (claim) =>
+              claim.field === "iban" &&
+              compact(claim.value) === compact(testCase.expectedIban ?? ""),
+          ),
+  };
+}
+
+export async function runCases(extractor: Extractor): Promise<EvalRun> {
+  const rows: Row[] = [];
+  for (const testCase of CASES) {
+    rows.push(await runCase(extractor, testCase));
   }
 
   const of = (category: string) => rows.filter((row) => row.category === category);

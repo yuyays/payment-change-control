@@ -139,7 +139,30 @@ export function evaluate(
     );
   }
 
-  const outcome: Outcome = validClaims.length === 0 ? "reject" : "escalate";
+  if (validClaims.length === 0) {
+    reasons.push(
+      reason("claims.none", "No claim survived citation and well-formedness checks.", "code", true),
+    );
+  }
+
+  // A callback number alone is not a change request. Without a bank account there is
+  // nothing to approve, and approving anyway would leave the vendor record untouched
+  // while the human believes they acted.
+  const hasBankDetails = validClaims.some(
+    (claim) => claim.field === "iban" || claim.field === "bankName",
+  );
+  if (!hasBankDetails) {
+    reasons.push(
+      reason(
+        "claims.no_bank_details",
+        "No valid bank account was extracted, so there is nothing to approve.",
+        "code",
+        true,
+      ),
+    );
+  }
+
+  const outcome: Outcome = hasBankDetails ? "escalate" : "reject";
 
   return {
     outcome,

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vp test run --passWithNoTests",
     "evals": "vp test run src/evals/evals.test.ts --disableConsoleIntercept",
-    "evals:model": "vp test run src/evals/model.test.ts --disableConsoleIntercept"
+    "evals:model": "vp test run src/evals/model.test.ts --disableConsoleIntercept",
+    "evals:adversarial": "vp test run src/evals/adversarial.test.ts --disableConsoleIntercept"
   },
   "dependencies": {
     "@pcc/contracts": "workspace:*",

@@ -116,7 +116,8 @@ Without a key, a regex extractor runs so the app works offline.
 ## Evals
 
 ```sh
-pnpm --filter @pcc/worker evals        # offline extractor, no key
+pnpm --filter @pcc/worker evals              # offline extractor, no key
+pnpm --filter @pcc/worker evals:adversarial  # 100 single-signal mutations
 EXTRACTION_API_KEY=... EXTRACTION_MODEL=gpt-6-luna \
   pnpm --filter @pcc/worker evals:model
 ```

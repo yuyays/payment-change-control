@@ -37,6 +37,9 @@ jobs:
       - name: Worker tests
         run: pnpm --filter @pcc/worker test
 
+      - name: Adversarial mutations
+        run: pnpm --filter @pcc/worker evals:adversarial
+
       - name: Durability (real workerd, alarm, restart)
         run: pnpm test:do
 
