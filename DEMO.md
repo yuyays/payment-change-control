@@ -65,7 +65,15 @@ Press **Approve as controller**.
 > "Approved. Two different people, after a 48-hour cooling-off period that runs as a Durable
 > Object alarm, so it survives a restart."
 
-### 1:15 — Replay
+### 1:10 — Look at the reviewer, not the agent
+
+Open the **Claims** card, press **View evidence** on the IBAN, then approve.
+
+> "The approval records what the human did: two citations opened, nine seconds. That's the part
+> everyone skips — the model is measured to death and the person signing off is measured not at
+> all."
+
+### 1:25 — Replay
 
 Press **Replay decision**.
 

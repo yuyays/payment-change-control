@@ -293,10 +293,10 @@ Using the SDK would have hidden the layer this project is demonstrating.
 1. **Ownership, not syntax.** mod-97 proves an IBAN is well-formed. It does not prove the supplier
    owns the account. Trustpair and Bottomline ask the bank; this design asks nobody. This is the
    largest functional gap in the system.
-2. **Does the human actually check?** The approval gate is unmeasured. Override rate, time on
-   task, and whether the approver opened the citations are the numbers that would tell you
-   whether oversight is real or a moral crumple zone. Right now the design cannot distinguish
-   between the two.
+2. **Does the human actually check?** The system now records, per approval, how many citations
+   were opened and how long the packet was on screen. That is a proxy, not proof: a reviewer can
+   open a citation without reading it. The missing measurement is calibration — do approvers who
+   skip the evidence approve things they should not, and can that be detected after the fact?
 3. **Vendor master drift.** The DO holds a snapshot of the vendor at intake. If the vendor is
    edited during cooling off, the decision is made against stale data. The alarm should
    re-validate against the live master.

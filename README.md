@@ -89,6 +89,8 @@ On a request page you get:
 - the findings, each tagged with its owner
 - the authority table, rendered from the same config the gate enforces
 - **Try to approve as the model**, which returns `403 authority_violation`
+- **Review evidence** — how many citations each approver opened and how long they spent, recorded
+  with the approval. Telemetry, never a decision input.
 
 ## Extraction
 

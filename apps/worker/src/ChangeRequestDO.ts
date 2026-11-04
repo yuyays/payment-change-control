@@ -13,6 +13,7 @@ import {
 import { DurableObject } from "cloudflare:workers";
 import { createExtractor } from "./extraction/index.js";
 import { diffClaims } from "./replay.js";
+import type { ReviewEvidence } from "./review-evidence.js";
 import type { Env } from "./index.js";
 
 export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected";
@@ -25,6 +26,8 @@ interface StoredState {
   readonly evaluatedAt: number;
   readonly status: Status;
   readonly approvals: ReadonlyArray<Approval>;
+  /** What each approver did before deciding. Telemetry, not a decision input. */
+  readonly evidence: ReadonlyArray<ReviewEvidence>;
 }
 
 /**
@@ -79,8 +82,12 @@ export class ChangeRequestDO extends DurableObject<Env> {
     }
 
     if (request.method === "POST" && url.pathname === "/approve") {
-      const body = await request.json<{ approverId: string; actor?: "human" | "model" }>();
-      return this.handleApproval(body.approverId, body.actor ?? "human");
+      const body = await request.json<{
+        approverId: string;
+        actor?: "human" | "model";
+        evidence?: { citationsOpened: number; dwellMs: number };
+      }>();
+      return this.handleApproval(body.approverId, body.actor ?? "human", body.evidence);
     }
 
     if (request.method === "POST" && url.pathname === "/replay") {
@@ -112,6 +119,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
       evaluatedAt: now,
       status: "cooling_off",
       approvals: [],
+      evidence: [],
     };
 
     await this.ctx.storage.put("state", state);
@@ -132,12 +140,28 @@ export class ChangeRequestDO extends DurableObject<Env> {
     return Response.json({ status, evaluation });
   }
 
-  private async handleApproval(approverId: string, actor: Approval["actor"]): Promise<Response> {
+  private async handleApproval(
+    approverId: string,
+    actor: Approval["actor"],
+    review?: { readonly citationsOpened: number; readonly dwellMs: number },
+  ): Promise<Response> {
     const state = await this.state();
     if (state === null) return new Response("No request", { status: 404 });
 
     const now = Date.now();
     const approvals = [...state.approvals, { actor, approverId, at: now }];
+    const evidence =
+      review === undefined
+        ? state.evidence
+        : [
+            ...state.evidence,
+            {
+              approverId,
+              citationsOpened: Math.max(0, Math.floor(review.citationsOpened)),
+              dwellMs: Math.max(0, Math.floor(review.dwellMs)),
+              at: now,
+            },
+          ];
 
     let result: ApprovalResult;
     try {
@@ -163,13 +187,13 @@ export class ChangeRequestDO extends DurableObject<Env> {
     }
 
     if (result.ok) {
-      const next: StoredState = { ...state, approvals, status: "approved" };
+      const next: StoredState = { ...state, approvals, evidence, status: "approved" };
       await this.ctx.storage.put("state", next);
       this.append("request.approved", { approverId });
       return Response.json({ ok: true, status: next.status });
     }
 
-    const next: StoredState = { ...state, approvals };
+    const next: StoredState = { ...state, approvals, evidence };
     await this.ctx.storage.put("state", next);
     this.append("request.approval_rejected", { approverId, actor, reason: result.reason });
     return Response.json({ ok: false, reason: result.reason }, { status: 409 });

@@ -27,6 +27,13 @@ export interface Evaluation {
 
 export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected";
 
+export interface ReviewEvidence {
+  readonly approverId: string;
+  readonly citationsOpened: number;
+  readonly dwellMs: number;
+  readonly at: number;
+}
+
 export interface Vendor {
   readonly id: string;
   readonly name: string;
@@ -50,6 +57,7 @@ export interface RequestState {
   readonly evaluation: Evaluation;
   readonly status: Status;
   readonly approvals: ReadonlyArray<{ actor: string; approverId: string; at: number }>;
+  readonly evidence: ReadonlyArray<ReviewEvidence>;
 }
 
 export interface TraceEvent {
@@ -143,11 +151,12 @@ export const approve = async (
   id: string,
   approverId: string,
   actor: "human" | "model" = "human",
+  evidence?: { citationsOpened: number; dwellMs: number },
 ): Promise<{ ok: boolean; reason?: string }> => {
   const response = await fetch(url(`/requests/${id}/approve`), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ approverId, actor }),
+    body: JSON.stringify({ approverId, actor, evidence }),
   });
 
   const body: unknown = await response.json();
