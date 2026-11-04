@@ -4,6 +4,10 @@ A domain harness for the highest-loss decision in accounts payable: **a supplier
 
 The model reads the email. Code decides. A human approves.
 
+- [DESIGN.md](DESIGN.md) — the design doc: trust boundary, failure model, alternatives, open questions
+- [DEMO.md](DEMO.md) — a two-minute walkthrough
+- [EVALS-MODEL.md](EVALS-MODEL.md) — real-model eval results
+
 ## The thesis
 
 Most agent products put the model in charge and add guardrails afterwards. This one inverts it: every decision has exactly one owner, declared in [`packages/domain/src/authority.ts`](packages/domain/src/authority.ts), and the gate throws if the wrong actor tries to act.
