@@ -1,5 +1,7 @@
 # payment-change-control
 
+**English** · [日本語](README.ja.md)
+
 A domain agent harness where **the model cannot approve anything**.
 
 ![CI](https://github.com/yuyays/payment-change-control/actions/workflows/ci.yml/badge.svg)
