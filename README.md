@@ -1,182 +1,114 @@
 # payment-change-control
 
-A domain harness for the highest-loss decision in accounts payable: **a supplier emails to change its bank details.**
+A domain agent harness where **the model cannot approve anything**.
 
-The model reads the email. Code decides. A human approves.
+![CI](https://github.com/yuyays/payment-change-control/actions/workflows/ci.yml/badge.svg)
 
-- [DESIGN.md](DESIGN.md) — the design doc: trust boundary, failure model, alternatives, open questions
-- [DEMO.md](DEMO.md) — a two-minute walkthrough
-- [EVALS-MODEL.md](EVALS-MODEL.md) — real-model eval results
+A supplier emails asking to change its bank details. Most are routine; some are fraud. This
+system reads the email with a model, decides with deterministic code, and requires two humans to
+approve. The evaluator has no `approve` outcome — not a guardrail around one, but no such value
+in the type — so there is no code path from a model output to a changed bank account.
 
-## Architecture
-
-One Durable Object per change request, and exactly one owner per decision.
+Built on Cloudflare Workers and Durable Objects. 30 curated eval cases and 100 adversarial
+mutations. CI green.
 
 ![Architecture](docs/architecture.svg)
 
-The model's output passes three independent gates. Any one of them can stop it.
+## Why
+
+Accounts payable's control for this decision is usually a policy document and a worried clerk.
+The evidence is unstructured (an email thread), the truth lives elsewhere (the vendor master),
+and the decision is binary while the risk is not.
+
+The failure that matters is not "the model picked the wrong label". It is "the model was
+allowed to form a judgment, and a human deferred to it". So the design removes the judgment:
+the model contributes quotes, code contributes checks, a human contributes the decision.
+
+## How it works
+
+**The model may only produce claims and quotes.** A strict schema rejects any response carrying
+a verdict, a risk score, or an approval — the whole response, not just the offending field.
+
+**Code anchors every quote.** The model does not supply offsets; the server locates the quote in
+the email. A fabricated or paraphrased quote cannot be anchored, because it is not in the source.
+Values must also be well-formed: an IBAN has to pass ISO 13616 mod-97.
+
+**Code checks the signals.** Sender domain against the vendor master (including lookalikes),
+Reply-To mismatch, callback number must match the one on file, recent-change flag, cooling-off.
+
+**A human approves.** Two distinct humans, after a 48-hour cooling-off period. The authority
+table below is the same exported object the gate enforces — the UI renders it, it is not a
+transcription.
+
+| Decision                                    | Owner |
+| ------------------------------------------- | ----- |
+| Extract claims from the email               | model |
+| Verify a citation is verbatim               | code  |
+| Compare sender domain to the vendor master  | code  |
+| Decide whether a callback number is trusted | code  |
+| Enforce the cooling-off period              | code  |
+| Approve the change                          | human |
+| Release payment                             | human |
 
 ![The trust boundary](docs/trust-boundary.svg)
 
-A request can never reach `approved` without two distinct humans.
-
-![Lifecycle](docs/lifecycle.svg)
-
-Diagram sources live in `docs/diagrams/*.dot`. Regenerate the SVGs with `pnpm docs:diagrams`
-(requires Graphviz).
-
-## The thesis
-
-Most agent products put the model in charge and add guardrails afterwards. This one inverts it: every decision has exactly one owner, declared in [`packages/domain/src/authority.ts`](packages/domain/src/authority.ts), and the gate throws if the wrong actor tries to act.
-
-| Decision                                        | Owner |
-| ----------------------------------------------- | ----- |
-| Extract claims from the email                   | model |
-| Verify a citation is verbatim                   | code  |
-| Compare sender domain to the vendor master      | code  |
-| Decide whether a callback number is trustworthy | code  |
-| Enforce the cooling-off period                  | code  |
-| Approve the change                              | human |
-| Release payment                                 | human |
-
-There is deliberately **no `approve` outcome** in `evaluate()`. The machine can only `reject` or `escalate`. Approval is a separate function that throws `AuthorityViolation` if a non-human actor is in the approval list.
-
-## Layout
-
-```
-packages/domain      pure TypeScript. No I/O, no runtime, no framework. 100% of the rules.
-packages/contracts   shared HTTP API types
-apps/worker          Cloudflare Worker + one Durable Object per change request
-apps/web             React review + approval UI (inherited from effect-starter)
-```
-
-`packages/domain` is the point. It is testable without a network and it is where the argument lives.
-
-## Run it
+## Try it
 
 ```sh
 pnpm install
-pnpm --filter @pcc/domain test
-pnpm --filter @pcc/worker dev     # wrangler dev on :8787
-pnpm --filter @pcc/web dev        # vite on :5173
-```
-
-## Endpoints
-
-```
-GET  /api/health
-POST /api/requests/:id/intake    { request, vendor }
-POST /api/requests/:id/approve   { approverId, actor? }
-GET  /api/requests/:id/state
-```
-
-## The demo
-
-```sh
 pnpm --filter @pcc/worker dev    # :8787
 pnpm --filter @pcc/web dev       # :5173
 ```
 
-Open http://localhost:5173 and press **Load demo data**. Six requests appear: one clean,
-four attacks, one declined at intake.
+Open http://localhost:5173, press **Load demo data**, and open a request. You get the email with
+citation-checked spans highlighted, the findings with their owners, the authority table, an
+approval panel, replay, and the review evidence recorded for each approver.
 
-`DEMO_MODE=1` (set in `wrangler.jsonc`) lets the client backdate `receivedAt` so the
-cooling-off period can be shown as already elapsed. Remove it for anything real.
-
-On a request page you get:
-
-- the email, with citation-checked spans highlighted
-- the findings, each tagged with its owner
-- the authority table, rendered from the same config the gate enforces
-- **Try to approve as the model**, which returns `403 authority_violation`
-- **Review evidence** — how many citations each approver opened and how long they spent, recorded
-  with the approval. Telemetry, never a decision input.
-
-## Extraction
-
-`apps/worker/src/extraction` turns an email into claims. The model may only return
-`{ field, quote }` pairs. Code then:
-
-1. parses the response against a strict schema — any extra key (a verdict, a risk
-   score, a confidence) rejects the whole response;
-2. locates each quote in the raw body, so the model never supplies offsets;
-3. drops quotes that are not verbatim, or that are malformed (an IBAN must pass
-   the ISO 13616 mod-97 check).
-
-Set these to use a real model (any OpenAI-compatible endpoint):
-
-```
-EXTRACTION_API_KEY
-EXTRACTION_BASE_URL   # default https://api.openai.com/v1
-EXTRACTION_MODEL      # default gpt-4o-mini
-```
-
-Without a key, a regex extractor runs so the app works offline.
+**Try to approve as the model** returns `403 authority_violation`.
 
 ## Evals
 
 ```sh
-pnpm --filter @pcc/worker evals              # offline extractor, no key
+pnpm --filter @pcc/worker evals              # 30 cases, offline extractor
 pnpm --filter @pcc/worker evals:adversarial  # 100 single-signal mutations
 EXTRACTION_API_KEY=... EXTRACTION_MODEL=gpt-6-luna \
-  pnpm --filter @pcc/worker evals:model
+  pnpm --filter @pcc/worker evals:model      # same cases, real model
+pnpm test:do                                 # durability: alarm, restart, concurrency
 ```
 
-30 cases: no observed fraud escapes, and zero auto-approvals by construction. The sample is
-small — 30 cases bounds the escape rate at roughly 10%, not zero (see `DESIGN.md` §10). The
-real-model run on `gpt-6-luna` is in
-[EVALS-MODEL.md](EVALS-MODEL.md); the offline baseline is in [EVALS.md](EVALS.md).
+Latest real-model run (`gpt-6-luna`): **0 / 11 fraud escapes, 0 auto-approvals, 100% citation
+validity, 100% IBAN recall**. The sample is small — 30 cases bounds the escape rate at roughly
+10%, not zero. See [DESIGN.md §10](DESIGN.md) for what the numbers do and do not support, and
+[EVALS-MODEL.md](EVALS-MODEL.md) for the run.
 
-## Durability
+The evals found two real bugs, both in the design rather than the model:
 
-```sh
-pnpm test:do
-```
+1. The first real-model run scored **50% IBAN recall** because the model quoted
+   `"New IBAN: DE89 …"` and the value check rejected the whole span. Fixed by extracting a
+   well-formed token from inside the cited span.
+2. The adversarial suite found that a corrupted IBAN in an email that also contained the on-file
+   phone number stayed **approvable** — one valid callback claim was enough. Fixed with a
+   `claims.no_bank_details` rule.
 
-Starts the real worker in workerd with an 8-second cooling-off, lets the alarm fire,
-kills the process, restarts it against the same storage, and then fires concurrent
-approvals. Seven checks, no mocks:
+## What this is not
 
-```
-PASS  status is cooling_off immediately after intake
-PASS  alarm fired and moved the request to ready_for_review
-PASS  state rehydrated after restart
-PASS  two concurrent identical approvals are not enough
-PASS  two distinct approvers approve
-```
+- **Not fraud prevention.** It stops a fraudulent change request from being approved. It does not
+  stop a payment elsewhere in the stack.
+- **Not ownership verification.** Mod-97 proves an IBAN is well-formed, not that the supplier owns
+  it. Trustpair and Bottomline ask the bank; this asks nobody. See [open questions](DESIGN.md).
+- **Not production ready.** No real email ingestion, no multi-tenancy, no monitoring, no users.
 
-## Fault injection (the demo)
+## Docs
 
-`EXTRACTION_MODE` swaps in a hostile extractor. It is a demo switch, not a feature.
+- [DESIGN.md](DESIGN.md) — the design doc, including prior art, the counter-position, and what
+  the evals do not prove
+- [DEMO.md](DEMO.md) — a two-minute walkthrough
+- [EVALS.md](EVALS.md) / [EVALS-MODEL.md](EVALS-MODEL.md) — eval reports
+- [AGENTS.md](AGENTS.md) — the rules the code follows
 
-| Attack                          | Mode / call                              | Which layer stops it | Result                                     |
-| ------------------------------- | ---------------------------------------- | -------------------- | ------------------------------------------ |
-| Model returns a verdict         | `EXTRACTION_MODE=compromised-schema`     | strict schema        | `422 invalid_model_output`                 |
-| Model invents a callback number | `EXTRACTION_MODE=compromised-fabricated` | anchoring            | quote dropped, never reaches the evaluator |
-| Model tries to approve          | `POST /approve {"actor":"model"}`        | authority gate       | `403 authority_violation`                  |
+Diagram sources are in `docs/diagrams/*.dot`; regenerate with `pnpm docs:diagrams`.
 
-An injection with **no other signal** is deliberately not blocked. It is
-indistinguishable from a legitimate request, and blocking on the phrase would be
-trivially evadable. The property that holds is that it has no effect: no claims, no
-decision change, no route to approval.
+## Stack
 
-## Replay
-
-`POST /api/requests/:id/replay` re-runs `evaluate()` against the stored inputs using the
-recorded `evaluatedAt`, not the current clock. With `{"extractor":"current"}` it also
-re-extracts the raw email with whichever model is configured and diffs the claims:
-
-```
-stored:   escalate [ ]
-replayed: escalate [ ]
-claims:   rule-based · stored 2 · replayed 2 · no differences
-```
-
-The decision is a pure function of stored data, so a replay that differs is a bug, not a
-second opinion.
-
-## What is not built yet
-
-- An MCP door, so Claude Duet or Grok Bot can call `startAudit` / `resolveApproval`
-- Real email ingestion (`.eml` upload instead of a JSON body)
-- The "amount at risk" column a controller actually triages on
+TypeScript · Cloudflare Workers + Durable Objects (SQLite) · Hono-free plain routing ·
+React + TanStack Router · Effect v4 in the shared contracts package · Vitest · oxlint/oxfmt.
