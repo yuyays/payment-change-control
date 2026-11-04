@@ -10,6 +10,8 @@ import {
   type Vendor,
 } from "@pcc/domain";
 import { DurableObject } from "cloudflare:workers";
+import { createExtractor } from "./extraction/index.js";
+import { diffClaims } from "./replay.js";
 import type { Env } from "./index.js";
 
 export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected";
@@ -18,6 +20,8 @@ interface StoredState {
   readonly request: ChangeRequest;
   readonly vendor: Vendor;
   readonly evaluation: Evaluation;
+  /** The clock reading used at intake. Replay must reuse it, not "now". */
+  readonly evaluatedAt: number;
   readonly status: Status;
   readonly approvals: ReadonlyArray<Approval>;
 }
@@ -69,6 +73,11 @@ export class ChangeRequestDO extends DurableObject<Env> {
       return this.handleApproval(body.approverId, body.actor ?? "human");
     }
 
+    if (request.method === "POST" && url.pathname === "/replay") {
+      const body = await request.json<{ extractor?: "stored" | "current" }>();
+      return this.replay(body);
+    }
+
     if (request.method === "GET" && url.pathname === "/state") {
       const state = await this.state();
       const events = this.ctx.storage.sql
@@ -90,6 +99,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
       request: input.request,
       vendor: input.vendor,
       evaluation,
+      evaluatedAt: now,
       status: "cooling_off",
       approvals: [],
     };
@@ -151,6 +161,54 @@ export class ChangeRequestDO extends DurableObject<Env> {
     await this.ctx.storage.put("state", next);
     this.append("request.approval_rejected", { approverId, actor, reason: result.reason });
     return Response.json({ ok: false, reason: result.reason }, { status: 409 });
+  }
+
+  /**
+   * Re-run the decision from stored inputs, and optionally re-extract with the
+   * current model. The clock is the recorded `evaluatedAt`, not now, so the
+   * replay is a real determinism check rather than a second opinion.
+   */
+  private async replay(input: { extractor?: "stored" | "current" }): Promise<Response> {
+    const state = await this.state();
+    if (state === null) return new Response("No request", { status: 404 });
+
+    const evaluatedAt = state.evaluatedAt ?? state.request.receivedAt;
+    const replayed = evaluate(state.request, state.vendor, evaluatedAt, DEFAULT_POLICY);
+
+    const codes = (evaluation: Evaluation): ReadonlyArray<string> =>
+      evaluation.reasons.map((reason) => reason.code).sort();
+
+    const same =
+      replayed.outcome === state.evaluation.outcome &&
+      codes(replayed).join("|") === codes(state.evaluation).join("|");
+
+    let claims = null;
+    if (input.extractor === "current") {
+      const extractor = createExtractor(this.env);
+      const outcome = await extractor.extract({
+        rawBody: state.request.rawBody,
+        fromAddress: state.request.extraction.fromAddress,
+        replyTo: state.request.extraction.replyTo,
+      });
+      claims = {
+        extractor: outcome.provider,
+        stored: state.evaluation.validClaims.length,
+        replayed: outcome.extraction.claims.length,
+        diff: diffClaims(state.evaluation.validClaims, outcome.extraction.claims),
+      };
+    }
+
+    this.append("request.replayed", { same, extractor: input.extractor ?? "stored" });
+
+    return Response.json({
+      decision: {
+        same,
+        evaluatedAt,
+        stored: { outcome: state.evaluation.outcome, reasons: codes(state.evaluation) },
+        replayed: { outcome: replayed.outcome, reasons: codes(replayed) },
+      },
+      claims,
+    });
   }
 
   /** Fires when the cooling-off period ends. Survives eviction, restarts, deploys. */

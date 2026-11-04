@@ -94,6 +94,34 @@ export const seed = (id: string, payload: SeedPayload): Promise<unknown> =>
     body: JSON.stringify(payload),
   }).then((r) => json<unknown>(r));
 
+export interface ReplayResult {
+  readonly decision: {
+    readonly same: boolean;
+    readonly evaluatedAt: number;
+    readonly stored: { readonly outcome: string; readonly reasons: ReadonlyArray<string> };
+    readonly replayed: { readonly outcome: string; readonly reasons: ReadonlyArray<string> };
+  };
+  readonly claims: null | {
+    readonly extractor: string;
+    readonly stored: number;
+    readonly replayed: number;
+    readonly diff: {
+      readonly added: ReadonlyArray<string>;
+      readonly removed: ReadonlyArray<string>;
+    };
+  };
+}
+
+export const replay = (
+  id: string,
+  extractor: "stored" | "current" = "stored",
+): Promise<ReplayResult> =>
+  fetch(url(`/requests/${id}/replay`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ extractor }),
+  }).then((r) => json<ReplayResult>(r));
+
 export const approve = (
   id: string,
   approverId: string,

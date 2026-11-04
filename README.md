@@ -105,7 +105,23 @@ indistinguishable from a legitimate request, and blocking on the phrase would be
 trivially evadable. The property that holds is that it has no effect: no claims, no
 decision change, no route to approval.
 
+## Replay
+
+`POST /api/requests/:id/replay` re-runs `evaluate()` against the stored inputs using the
+recorded `evaluatedAt`, not the current clock. With `{"extractor":"current"}` it also
+re-extracts the raw email with whichever model is configured and diffs the claims:
+
+```
+stored:   escalate [ ]
+replayed: escalate [ ]
+claims:   rule-based · stored 2 · replayed 2 · no differences
+```
+
+The decision is a pure function of stored data, so a replay that differs is a bug, not a
+second opinion.
+
 ## What is not built yet
 
-- The UI rewiring from the starter's `users` example
-- Replay from the event log
+- An MCP door, so Claude Duet or Grok Bot can call `startAudit` / `resolveApproval`
+- Real email ingestion (`.eml` upload instead of a JSON body)
+- The "amount at risk" column a controller actually triages on

@@ -4,7 +4,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { approve, getState, type Claim } from "@/lib/api.js";
+import { approve, getState, replay, type Claim, type ReplayResult } from "@/lib/api.js";
 
 export const Route = createFileRoute("/requests/$id")({
   component: RequestRoute,
@@ -63,6 +63,19 @@ function RequestRoute() {
       void queryClient.invalidateQueries({ queryKey: ["states"] });
     },
     onError: (error: Error) => setMessage(error.message),
+  });
+
+  const [replayResult, setReplayResult] = useState<ReplayResult | null>(null);
+  const [replayNote, setReplayNote] = useState<string | null>(null);
+
+  const replayMutation = useMutation({
+    mutationFn: (mode: "stored" | "current") => replay(id, mode),
+    onMutate: () => {
+      setReplayNote(null);
+      setReplayResult(null);
+    },
+    onSuccess: (result) => setReplayResult(result),
+    onError: (error: Error) => setReplayNote(error.message),
   });
 
   const state = stateQuery.data?.state;
@@ -213,6 +226,89 @@ function RequestRoute() {
             </Card>
           </div>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Replay</CardTitle>
+            <CardDescription>
+              Re-run the stored decision with its recorded clock, or re-extract with the current
+              model and diff the claims.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => replayMutation.mutate("stored")}
+                disabled={replayMutation.isPending}
+              >
+                Replay decision
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => replayMutation.mutate("current")}
+                disabled={replayMutation.isPending}
+              >
+                Re-extract and diff
+              </Button>
+            </div>
+
+            {replayNote === null ? null : (
+              <p className="rounded-md bg-red-50 p-2 text-xs text-red-800">{replayNote}</p>
+            )}
+
+            {replayResult === null ? null : (
+              <div className="space-y-2 text-sm">
+                <p>
+                  <span
+                    className={
+                      replayResult.decision.same ? "font-medium text-emerald-700" : "font-medium text-red-700"
+                    }
+                  >
+                    {replayResult.decision.same ? "Identical decision" : "Decision changed"}
+                  </span>
+                  <span className="text-stone-500">
+                    {" · clock "}
+                    {new Date(replayResult.decision.evaluatedAt).toLocaleString()}
+                  </span>
+                </p>
+                <p className="font-mono text-xs text-stone-600">
+                  stored: {replayResult.decision.stored.outcome} [
+                  {replayResult.decision.stored.reasons.join(", ") || "no findings"}]
+                </p>
+                <p className="font-mono text-xs text-stone-600">
+                  replayed: {replayResult.decision.replayed.outcome} [
+                  {replayResult.decision.replayed.reasons.join(", ") || "no findings"}]
+                </p>
+
+                {replayResult.claims === null ? null : (
+                  <div className="space-y-1 rounded-md bg-stone-50 p-3 text-xs text-stone-700">
+                    <p className="font-medium">
+                      {replayResult.claims.extractor} · stored {replayResult.claims.stored} · replayed{" "}
+                      {replayResult.claims.replayed}
+                    </p>
+                    {replayResult.claims.diff.added.length > 0 ? (
+                      <p className="text-emerald-700">
+                        + {replayResult.claims.diff.added.join(", ")}
+                      </p>
+                    ) : null}
+                    {replayResult.claims.diff.removed.length > 0 ? (
+                      <p className="text-red-700">
+                        − {replayResult.claims.diff.removed.join(", ")}
+                      </p>
+                    ) : null}
+                    {replayResult.claims.diff.added.length === 0 &&
+                    replayResult.claims.diff.removed.length === 0 ? (
+                      <p className="text-stone-500">No claim differences.</p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
