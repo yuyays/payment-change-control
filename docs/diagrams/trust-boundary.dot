@@ -1,0 +1,32 @@
+digraph trust {
+  rankdir=TB;
+  graph [fontname="DejaVu Sans", bgcolor="white", pad=0.35, nodesep=0.35, ranksep=0.45];
+  node [shape=box, style="rounded,filled", fillcolor="#ffffff", color="#d6d3d1",
+        fontname="DejaVu Sans", fontsize=11, penwidth=1.3, margin="0.16,0.09"];
+  edge [color="#78716c", fontname="DejaVu Sans", fontsize=9, fontcolor="#57534e",
+        arrowsize=0.7, penwidth=1.1];
+
+  out     [label="Model output", fillcolor="#f5f3ff", color="#ddd6fe"];
+  schema  [label="1. schema", shape=diamond, style="filled",
+           fillcolor="#fafaf9", color="#a8a29e", fontsize=10];
+  anchor  [label="2. anchoring", shape=diamond, style="filled",
+           fillcolor="#fafaf9", color="#a8a29e", fontsize=10];
+  well    [label="3. well-formed", shape=diamond, style="filled",
+           fillcolor="#fafaf9", color="#a8a29e", fontsize=10];
+
+  r1 [label="reject the whole response", fillcolor="#fef2f2", color="#fecaca"];
+  r2 [label="drop the claim", fillcolor="#fef2f2", color="#fecaca"];
+  r3 [label="drop the claim", fillcolor="#fef2f2", color="#fecaca"];
+  ok [label="claim shown, with citation", fillcolor="#ecfdf5", color="#a7f3d0"];
+
+  out    -> schema [label="  "];
+  schema -> r1     [label="  any extra key,\n  e.g. decision"];
+  schema -> anchor [label="  claims + quotes"];
+  anchor -> r2     [label="  quote not present\n  in the email"];
+  anchor -> well   [label="  verbatim"];
+  well   -> r3     [label="  truncated IBAN,\n  failed mod-97"];
+  well   -> ok     [label="  valid"];
+
+  { rank=same; r1; anchor }
+  { rank=same; r2; well }
+}

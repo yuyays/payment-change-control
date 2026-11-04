@@ -1,0 +1,24 @@
+digraph lifecycle {
+  rankdir=LR;
+  graph [fontname="DejaVu Sans", bgcolor="white", pad=0.35, nodesep=0.5, ranksep=0.7];
+  node [shape=box, style="rounded,filled", fillcolor="#ffffff", color="#d6d3d1",
+        fontname="DejaVu Sans", fontsize=11, penwidth=1.3, margin="0.18,0.10"];
+  edge [color="#78716c", fontname="DejaVu Sans", fontsize=9, fontcolor="#57534e",
+        arrowsize=0.7, penwidth=1.1];
+
+  start    [shape=point, width=0.12, color="#57534e"];
+  done     [shape=point, width=0.12, color="#57534e"];
+  intake   [label="Intake"];
+  rejected [label="Rejected", fillcolor="#fef2f2", color="#fecaca"];
+  cooling  [label="Cooling off\n48h alarm", fillcolor="#fffbeb", color="#fde68a"];
+  ready    [label="Ready for review", fillcolor="#eff6ff", color="#bfdbfe"];
+  approved [label="Approved", fillcolor="#ecfdf5", color="#a7f3d0"];
+
+  start    -> intake;
+  intake   -> rejected [label="no valid claim survives"];
+  intake   -> cooling  [label="escalate"];
+  cooling  -> ready    [label="alarm fires"];
+  ready    -> ready    [label="blocking finding"];
+  ready    -> approved [label="two distinct humans"];
+  approved -> done;
+}

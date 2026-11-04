@@ -8,6 +8,23 @@ The model reads the email. Code decides. A human approves.
 - [DEMO.md](DEMO.md) — a two-minute walkthrough
 - [EVALS-MODEL.md](EVALS-MODEL.md) — real-model eval results
 
+## Architecture
+
+One Durable Object per change request, and exactly one owner per decision.
+
+![Architecture](docs/architecture.svg)
+
+The model's output passes three independent gates. Any one of them can stop it.
+
+![The trust boundary](docs/trust-boundary.svg)
+
+A request can never reach `approved` without two distinct humans.
+
+![Lifecycle](docs/lifecycle.svg)
+
+Diagram sources live in `docs/diagrams/*.dot`. Regenerate the SVGs with `pnpm docs:diagrams`
+(requires Graphviz).
+
 ## The thesis
 
 Most agent products put the model in charge and add guardrails afterwards. This one inverts it: every decision has exactly one owner, declared in [`packages/domain/src/authority.ts`](packages/domain/src/authority.ts), and the gate throws if the wrong actor tries to act.

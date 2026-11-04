@@ -18,7 +18,8 @@
     "lint": "vp run @pcc/contracts#build && vp run @pcc/domain#build && vp lint .",
     "format:check": "vp fmt . --check",
     "prepare": "effect-tsgo patch --typescript",
-    "test:do": "bash scripts/durability.sh"
+    "test:do": "bash scripts/durability.sh",
+    "docs:diagrams": "bash scripts/diagrams.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "0.63.0",

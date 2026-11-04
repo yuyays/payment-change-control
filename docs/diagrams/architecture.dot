@@ -1,0 +1,26 @@
+digraph architecture {
+  rankdir=LR;
+  graph [fontname="DejaVu Sans", bgcolor="white", pad=0.35, nodesep=0.5, ranksep=0.55];
+  node [shape=box, style="rounded,filled", fillcolor="#ffffff", color="#d6d3d1",
+        fontname="DejaVu Sans", fontsize=11, penwidth=1.3, margin="0.18,0.10"];
+  edge [color="#78716c", fontname="DejaVu Sans", fontsize=9, fontcolor="#57534e",
+        arrowsize=0.7, penwidth=1.1];
+
+  browser [label="Browser\nreview packet", fillcolor="#ecfeff", color="#a5f3fc"];
+  worker  [label="Worker\nHTTP + extraction", fillcolor="#fafaf9", color="#d6d3d1"];
+  model   [label="Model\nclaims + quotes only", fillcolor="#f5f3ff", color="#ddd6fe"];
+  store   [label="Durable Object\nstate + events", shape=cylinder,
+           fillcolor="#ecfdf5", color="#a7f3d0"];
+  domain  [label="domain\npure TypeScript", fillcolor="#eff6ff", color="#bfdbfe"];
+  alarm   [label="alarm\ncooling off", shape=oval, fillcolor="#fffbeb", color="#fde68a"];
+
+  browser -> worker [label="email + vendor"];
+  worker  -> model  [label="prompt"];
+  model   -> worker [label="quotes", style=dashed];
+  worker  -> store  [label="intake / approve"];
+  store   -> domain [label="evaluate()"];
+  domain  -> store  [label="reasons + outcome", style=dashed];
+  alarm   -> store  [label="fires after 48h", style=dashed];
+
+  { rank=same; model; store }
+}
