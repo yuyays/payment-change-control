@@ -1,4 +1,5 @@
 import type { Citation, ClaimField, Vendor } from "./types.js";
+import { decodePunycodeLabels, foldConfusables } from "./unicode.js";
 
 /** Lowercase, strip a trailing dot and a leading `www.`. No IDN resolution yet. */
 export function normalizeDomain(domain: string): string {
@@ -45,14 +46,21 @@ export function domainVerdict(senderDomain: string, registeredDomain: string): D
   const sender = registrablePart(senderDomain);
   const registered = registrablePart(registeredDomain);
 
+  // Equality is decided on the ASCII form. Folding first would accept a spoof: a
+  // Cyrillic "а" that renders as "a" is a different domain, not the same one.
   if (sender === registered) return "match";
 
+  const senderFolded = registrablePart(foldConfusables(decodePunycodeLabels(sender)));
+  const registeredFolded = registrablePart(foldConfusables(decodePunycodeLabels(registered)));
+
+  if (senderFolded === registeredFolded) return "lookalike";
+
   const withoutHyphens = (value: string) => value.replace(/-/g, "");
-  if (withoutHyphens(sender) === withoutHyphens(registered)) return "lookalike";
+  if (withoutHyphens(senderFolded) === withoutHyphens(registeredFolded)) return "lookalike";
 
   // Same registrable label but a different TLD still counts as a mismatch, not a lookalike.
-  const [senderName, senderTld] = sender.split(".");
-  const [registeredName, registeredTld] = registered.split(".");
+  const [senderName, senderTld] = senderFolded.split(".");
+  const [registeredName, registeredTld] = registeredFolded.split(".");
   if (senderTld !== registeredTld) return "mismatch";
   if (senderName !== undefined && registeredName !== undefined) {
     const distance = levenshtein(senderName, registeredName);
