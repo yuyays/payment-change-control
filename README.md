@@ -119,7 +119,9 @@ EXTRACTION_API_KEY=... EXTRACTION_MODEL=gpt-6-luna \
   pnpm --filter @pcc/worker evals:model
 ```
 
-30 cases, 0 fraud escapes, 0 auto-approvals. The real-model run on `gpt-6-luna` is in
+30 cases: no observed fraud escapes, and zero auto-approvals by construction. The sample is
+small — 30 cases bounds the escape rate at roughly 10%, not zero (see `DESIGN.md` §10). The
+real-model run on `gpt-6-luna` is in
 [EVALS-MODEL.md](EVALS-MODEL.md); the offline baseline is in [EVALS.md](EVALS.md).
 
 ## Durability

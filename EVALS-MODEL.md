@@ -89,3 +89,5 @@ This is the eval doing its job: the offline extractor could never have exposed i
   without it. Results vary slightly run to run; a single run is not a baseline.
 - **30 cases written by the author.** This measures the pipeline, not the world. Real AP inboxes
   are the only source that would make these numbers commercially meaningful.
+- **Zero is not a rate.** 0 escapes in 11 fraud cases is consistent with a true escape rate as
+  high as ~10% (95% confidence, rule of three). Report it as "no observed escapes", not "0%.

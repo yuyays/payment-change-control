@@ -38,6 +38,9 @@ the decision that matters.
 This is stronger than "the prompt says don't". A prompt is an instruction; a type is a
 constraint. `evaluate()` cannot return `approve` because the type has no such variant.
 
+The pattern has a name in the literature: **LLM-Modulo** — the model generates, an external
+verifier disposes. See §11 for the rest of the pedigree.
+
 ## 3. Non-goals
 
 - Multi-tenancy, billing, SSO. This is a single-domain harness, not a SaaS.
@@ -158,8 +161,11 @@ append-only event log.
 - **Cooling off is an alarm**, not a cron and not a sleep. It survives eviction, restart, and
   deploy.
 - **The event log is SQLite** inside the DO, written before the response is returned.
-- **Approvals are serialised** by the object's single-threaded model. Two concurrent clicks
-  cannot both become the "second" approval.
+- **Approvals are serialised** by the object's single-threaded model: the approval handler reads
+  state, computes, and writes with no `await` in between, so the read-modify-write is atomic
+  today. This is safe by construction but fragile — a future callout between the read and the
+  write would reopen the race and no test would catch it. `ctx.storage.transaction()` is the
+  durable fix.
 - **Replay uses the recorded clock** (`evaluatedAt`), not `Date.now()`, so re-running the
   decision is a determinism check rather than a second opinion.
 
@@ -182,12 +188,7 @@ against the same storage, state rehydrates, concurrent approvals behave.
 
 ## 10. Evals
 
-30 cases: 10 legitimate, 11 fraud, 9 hard negatives. Two numbers matter:
-
-- **fraud escapes** — must be 0. No fraudulent request reaches an approvable state.
-- **auto-approvals** — must be 0. There is no such outcome to reach.
-
-Latest real-model run (`gpt-6-luna`, see `EVALS-MODEL.md`):
+30 cases: 10 legitimate, 11 fraud, 9 hard negatives.
 
 | Metric                   | Value  |
 | ------------------------ | ------ |
@@ -198,11 +199,77 @@ Latest real-model run (`gpt-6-luna`, see `EVALS-MODEL.md`):
 | Legit approvable         | 100%   |
 | Hard-negative approvable | 77.8%  |
 
+The two safety numbers are not the same kind of claim:
+
+- **auto-approvals = 0 is structural.** The evaluator has no such outcome, so it cannot regress
+  without a type change.
+- **fraud escapes = 0 is empirical.** It depends on the cases, and 11 is a small sample.
+
+### What the numbers do not mean
+
+Zero escapes in 11 fraud cases gives a 95% upper bound of roughly **10%** on the true escape
+rate (the rule of three: 3/n). It is evidence that the pipeline catches the eleven attacks it
+was shown — not evidence that it catches fraud in general. The honest claim is **"no observed
+escapes in 30 cases."**
+
+The next eval step is adversarial generation rather than more hand-written cases: mutate a
+known-legitimate email one signal at a time and assert that the decision changes exactly when it
+should, and at no other time.
+
 The first real-model run scored **50% recall** because the model quoted the label with the
 value. That was a domain bug, not a model bug, and the offline regex extractor could never have
 exposed it. The fix (`extractWellFormed`) is described in §6.2.
 
-## 11. Alternatives considered
+## 11. Prior art
+
+Nothing here is invented. It is a composition of patterns with long pedigrees, applied to one
+workflow.
+
+| Element                                   | Established name                        | Source                   |
+| ----------------------------------------- | --------------------------------------- | ------------------------ |
+| Model proposes, verifier disposes         | **LLM-Modulo**                          | Kambhampati et al., 2024 |
+| An output type with no `approve` variant  | **make illegal states unrepresentable** | Minsky, 2010             |
+| Validate at the boundary, carry the proof | **parse, don't validate**               | King, 2019               |
+| Every action passes the gate              | **reference monitor**                   | Anderson, 1972           |
+| Two distinct humans                       | **maker–checker / four-eyes**           | FFIEC, banking           |
+| Safe even if the model is adversarial     | **AI control**                          | Greenblatt et al., 2023  |
+| Untrusted input cannot trigger an action  | **CaMeL**, action-selector              | Debenedetti et al., 2025 |
+| Least privilege over tool reach           | OWASP LLM06 **Excessive Agency**        | OWASP, 2025              |
+
+### Products doing something similar
+
+- **Kognitos** — markets the same split as "neurosymbolic": LLM for understanding, deterministic
+  engine for rules.
+- **MightyBot** — policy compiled to a deterministic DAG; "a model cannot skip a required check,
+  because the check is a step in the plan rather than a suggestion in a prompt."
+- **Palantir AIP** — deterministic functions, runtime validations, and per-action authorization
+  grants.
+- **Botminds** — sealed agent witnesses plus a "verdict clerk" that never decides, applied to
+  this exact workflow.
+- **Trustpair** — bank-account _ownership_ verification, and an explicit argument against
+  letting AI make the call.
+
+### What is not novel, and what is
+
+Not novel: code deciding, a human approving, citations, and an audit trail. Every serious vendor
+in this market separates detection from verification from approval.
+
+Unusual: refusing the model a **verdict** at the type level, and assigning authority per
+_decision_ rather than per _tool_. I could not find a product that documents either. That is
+either ahead of the market or unnecessary, and this project cannot tell you which.
+
+### The counter-position
+
+Coupa ships an agent that reads a forged bank letter and returns "74% risk, 13 signals,
+recommended Reject." Their CISO's position is that this is _a signal to confirm, not a
+substitute for confirming_, and that every change needs out-of-band human confirmation — but
+they still let the model rank.
+
+The argument for: a ranked signal helps a human triage, and a binary block does not. The
+argument against: a score invites deference. This design takes the second position. That is a
+bet, not a proof.
+
+## 12. Alternatives considered
 
 **AP three-way match** — rejected. Richer deterministic core, but the model's only job is OCR;
 everything else is joins and tolerance maths. It reads as a rules engine with an LLM bolted on,
@@ -221,28 +288,38 @@ tool. If this grew to orchestrate remediation across five systems, that trade fl
 learning. The runtime is now commodity; the domain rules and the evidence are the product.
 Using the SDK would have hidden the layer this project is demonstrating.
 
-## 12. Open questions
+## 13. Open questions
 
-1. **Vendor master drift.** The DO holds a snapshot of the vendor at intake. If the vendor is
-   edited during cooling off, the decision is made against stale data. Should the alarm
-   re-validate against the live master?
-2. **Override.** A legitimate post-acquisition domain change is currently blocked forever. Real
-   operations need a documented, audited override ("we called the number on file and confirmed").
-   That is a new authority row, not a flag.
-3. **Lookalike detection.** Edit distance misses homoglyphs and punycode. This needs a real
+1. **Ownership, not syntax.** mod-97 proves an IBAN is well-formed. It does not prove the supplier
+   owns the account. Trustpair and Bottomline ask the bank; this design asks nobody. This is the
+   largest functional gap in the system.
+2. **Does the human actually check?** The approval gate is unmeasured. Override rate, time on
+   task, and whether the approver opened the citations are the numbers that would tell you
+   whether oversight is real or a moral crumple zone. Right now the design cannot distinguish
+   between the two.
+3. **Vendor master drift.** The DO holds a snapshot of the vendor at intake. If the vendor is
+   edited during cooling off, the decision is made against stale data. The alarm should
+   re-validate against the live master.
+4. **Override.** A legitimate post-acquisition domain change is blocked forever. Operations need
+   a documented, audited override ("we called the number on file and confirmed"). That is a new
+   authority row, not a flag.
+5. **Lookalike detection.** Edit distance misses homoglyphs and punycode. This needs a real
    normalisation step before it can be trusted.
-4. **The eval set.** 30 cases written by the author measure the pipeline, not the world. Real
-   AP inboxes are the only source that would make these numbers mean something.
-5. **Amount at risk.** Nothing in the system knows how much money is exposed, which is what a
+6. **The eval set.** 30 cases written by the author measure the pipeline, not the world. See §10
+   for what the numbers do and do not support.
+7. **Amount at risk.** Nothing in the system knows how much money is exposed, which is what a
    controller actually triages on.
 
-## 13. Risks
+## 14. Risks
 
 - **The "should we verify?" judgment is the product.** Code blocks; humans decide. If customers
   want straight-through processing, this design is the wrong shape for them.
 - **A blocked request is not a safe request.** The system refuses to proceed; it does not stop a
   payment elsewhere in the stack.
 - **Model cost is per-request and unbounded** by anything except the per-call timeout.
+- **The human gate can become theater.** A reviewer handed a clean, pre-validated packet is a
+  candidate for automation bias. The design currently has no way to tell a real check from a
+  rubber stamp.
 
 ## Appendix: layout
 
