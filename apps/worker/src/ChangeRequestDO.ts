@@ -159,20 +159,6 @@ export class ChangeRequestDO extends DurableObject<Env> {
     const state = await this.state();
     if (state === null) return new Response("No request", { status: 404 });
 
-    // The clock alone is not enough: the alarm must have revalidated the master.
-    if (state.status !== "ready_for_review") {
-      assertAuthority("check.reviewReadiness", "code");
-      this.append("request.approval_rejected", {
-        approverId,
-        actor,
-        reason: state.invalidationReason ?? state.status,
-      });
-      return Response.json(
-        { ok: false, reason: state.invalidationReason ?? state.status },
-        { status: 409 },
-      );
-    }
-
     const now = Date.now();
     const approvals = [...state.approvals, { actor, approverId, at: now }];
     const evidence =
@@ -190,6 +176,21 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
     let result: ApprovalResult;
     try {
+      assertAuthority("decide.approveChange", actor);
+      // The clock alone is not enough: the alarm must have revalidated the master.
+      if (state.status !== "ready_for_review") {
+        assertAuthority("check.reviewReadiness", "code");
+        this.append("request.approval_rejected", {
+          approverId,
+          actor,
+          reason: state.invalidationReason ?? state.status,
+        });
+        return Response.json(
+          { ok: false, reason: state.invalidationReason ?? state.status },
+          { status: 409 },
+        );
+      }
+
       result = approve(state.evaluation, approvals, now, this.policy());
     } catch (error) {
       if (error instanceof AuthorityViolation) {

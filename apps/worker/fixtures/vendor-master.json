@@ -1,0 +1,11 @@
+{
+  "id": "v-acme",
+  "name": "Acme Industrial",
+  "registeredDomain": "acme-industrial.com",
+  "phoneOnFile": "+81 3 5555 0100",
+  "bankAccount": {
+    "bankName": "MUFG",
+    "iban": "JP00 0000 0000 0000"
+  },
+  "lastBankChangeAt": null
+}

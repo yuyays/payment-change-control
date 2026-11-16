@@ -153,7 +153,15 @@ function RequestRoute() {
         <header className="space-y-1">
           <p className="text-sm uppercase tracking-[0.2em] text-stone-500">{state.vendor.name}</p>
           <h1 className="text-3xl font-semibold">
-            {state.evaluation.outcome === "reject" ? "Rejected at intake" : "Pending human review"}
+            {state.status === "invalidated"
+              ? "Invalidated by vendor change"
+              : state.status === "approved"
+                ? "Approved"
+                : state.evaluation.outcome === "reject"
+                  ? "Rejected at intake"
+                  : state.status === "cooling_off"
+                    ? "Cooling off"
+                    : "Pending human review"}
           </h1>
           <p className="text-sm font-medium text-stone-800">
             {state.request.amount === undefined
@@ -302,7 +310,7 @@ function RequestRoute() {
                   variant="outline"
                   className="border-red-300 text-red-700 hover:bg-red-50"
                   onClick={() => approval.mutate({ approverId: "claude", actor: "model" })}
-                  disabled={approval.isPending || state.status !== "ready_for_review"}
+                  disabled={approval.isPending}
                 >
                   Try to approve as the model
                 </Button>

@@ -5,6 +5,7 @@ Two minutes. One sentence, one attack, one approval.
 ## Before you start
 
 ```sh
+pnpm --filter @pcc/worker demo:seed-master  # trusted local fixture; run before intake
 pnpm --filter @pcc/worker dev    # :8787
 pnpm --filter @pcc/web dev       # :5173
 ```

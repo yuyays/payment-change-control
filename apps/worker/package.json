@@ -11,7 +11,8 @@
     "test": "vp test run --passWithNoTests",
     "evals": "vp test run src/evals/evals.test.ts --disableConsoleIntercept",
     "evals:model": "vp test run src/evals/model.test.ts --disableConsoleIntercept",
-    "evals:adversarial": "vp test run src/evals/adversarial.test.ts --disableConsoleIntercept"
+    "evals:adversarial": "vp test run src/evals/adversarial.test.ts --disableConsoleIntercept",
+    "demo:seed-master": "wrangler kv key put v-acme --binding VENDOR_MASTER --local --path fixtures/vendor-master.json"
   },
   "dependencies": {
     "@pcc/contracts": "workspace:*",

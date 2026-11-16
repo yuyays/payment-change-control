@@ -76,11 +76,11 @@ function harness() {
         }),
       }),
     );
-  const approve = (approverId: string) =>
+  const approve = (approverId: string, actor: "human" | "model" = "human") =>
     object.fetch(
       new Request("https://do/approve", {
         method: "POST",
-        body: JSON.stringify({ approverId }),
+        body: JSON.stringify({ approverId, actor }),
       }),
     );
   return { object, intake, approve, records, events, get, setAlarm };
@@ -158,6 +158,19 @@ describe("cooling-off master revalidation", () => {
     expect((await h.approve("two")).status).toBe(409);
     await h.object.alarm();
     expect(h.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects model approval by authority even while cooling", async () => {
+    const h = harness();
+    await h.intake();
+    const response = await h.approve("model", "model");
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "authority_violation" });
+    expect(h.records.get("state")).toMatchObject({ status: "cooling_off", approvals: [] });
+    expect(h.events.at(-1)).toEqual({
+      type: "authority.violation",
+      payload: { action: "decide.approveChange", expected: "human", actual: "model" },
+    });
   });
 
   it("does not release requests merely because the clock elapsed", async () => {
