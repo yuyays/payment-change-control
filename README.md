@@ -58,6 +58,7 @@ transcription.
 
 ```sh
 pnpm install
+pnpm --filter @pcc/worker demo:seed-master  # trusted local fixture; run before intake
 pnpm --filter @pcc/worker dev    # :8787
 pnpm --filter @pcc/web dev       # :5173
 ```

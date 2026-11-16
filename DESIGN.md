@@ -70,7 +70,8 @@ intake ──▶ cooling off (48h) ──▶ human review ──▶ approved
 ```
 
 There is no automatic approval state. The best a request can reach without a human is
-`ready_for_review`.
+`ready_for_review`. At cooling-off expiry, master bank/domain/phone drift moves the
+request to terminal `invalidated`, which blocks approval.
 
 ## 5. Authority
 
@@ -174,17 +175,17 @@ against the same storage, state rehydrates, concurrent approvals behave.
 
 ## 9. Failure model
 
-| Failure                                    | Behaviour                                                  |
-| ------------------------------------------ | ---------------------------------------------------------- |
-| Model returns malformed JSON               | 422, request not created                                   |
-| Model returns a verdict                    | 422, whole response rejected                               |
-| Model times out (60s)                      | 422, request not created                                   |
-| Model quotes a fabricated number           | quote dropped by anchoring                                 |
-| Model quotes a truncated IBAN              | dropped by mod-97                                          |
-| Process dies during cooling off            | alarm fires after restart                                  |
-| Duplicate approval click                   | distinct-approver count unchanged                          |
-| Model calls `/approve` with `actor: model` | 403 `authority_violation`, event logged                    |
-| Vendor record edited mid-flow              | state holds a snapshot; not yet re-checked (open question) |
+| Failure                                    | Behaviour                                                            |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| Model returns malformed JSON               | 422, request not created                                             |
+| Model returns a verdict                    | 422, whole response rejected                                         |
+| Model times out (60s)                      | 422, request not created                                             |
+| Model quotes a fabricated number           | quote dropped by anchoring                                           |
+| Model quotes a truncated IBAN              | dropped by mod-97                                                    |
+| Process dies during cooling off            | alarm fires after restart                                            |
+| Duplicate approval click                   | distinct-approver count unchanged                                    |
+| Model calls `/approve` with `actor: model` | 403 `authority_violation`, event logged                              |
+| Vendor record edited mid-flow              | alarm rechecks trusted master; drift invalidates and blocks approval |
 
 ## 10. Evals
 
@@ -309,9 +310,10 @@ Using the SDK would have hidden the layer this project is demonstrating.
    were opened and how long the packet was on screen. That is a proxy, not proof: a reviewer can
    open a citation without reading it. The missing measurement is calibration — do approvers who
    skip the evidence approve things they should not, and can that be detected after the fact?
-3. **Vendor master drift.** The DO holds a snapshot of the vendor at intake. If the vendor is
-   edited during cooling off, the decision is made against stale data. The alarm should
-   re-validate against the live master.
+3. **Vendor master consistency.** Intake snapshots trusted master data and the alarm rechecks
+   bank details, domain and phone before review. Drift invalidates the request. The KV adapter
+   is eventually consistent, so strict deployments need a strongly consistent master service;
+   see `docs/VENDOR-MASTER.md`.
 4. **Override.** A legitimate post-acquisition domain change is blocked forever. Operations need
    a documented, audited override ("we called the number on file and confirmed"). That is a new
    authority row, not a flag.

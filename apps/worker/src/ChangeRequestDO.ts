@@ -1,5 +1,7 @@
 import {
   approve,
+  assertAuthority,
+  vendorChanges,
   AuthorityViolation,
   DEFAULT_POLICY,
   evaluate,
@@ -12,11 +14,12 @@ import {
 } from "@pcc/domain";
 import { DurableObject } from "cloudflare:workers";
 import { createExtractor } from "./extraction/index.js";
+import { readVendorMaster } from "./vendor-master.js";
 import { diffClaims } from "./replay.js";
 import type { ReviewEvidence } from "./review-evidence.js";
 import type { Env } from "./index.js";
 
-export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected";
+export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected" | "invalidated";
 
 interface StoredState {
   readonly request: ChangeRequest;
@@ -26,6 +29,7 @@ interface StoredState {
   readonly evaluatedAt: number;
   readonly status: Status;
   readonly approvals: ReadonlyArray<Approval>;
+  readonly invalidationReason?: "vendor.changed_mid_flow";
   /** What each approver did before deciding. Telemetry, not a decision input. */
   readonly evidence: ReadonlyArray<ReviewEvidence>;
 }
@@ -110,11 +114,17 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
   private async intake(input: { request: ChangeRequest; vendor: Vendor }): Promise<Response> {
     const now = Date.now();
-    const evaluation = evaluate(input.request, input.vendor, now, this.policy());
+    let vendor: Vendor;
+    try {
+      vendor = await readVendorMaster(this.env.VENDOR_MASTER, input.request.vendorId);
+    } catch {
+      return Response.json({ error: "vendor_master_unavailable" }, { status: 503 });
+    }
+    const evaluation = evaluate(input.request, vendor, now, this.policy());
 
     const state: StoredState = {
       request: input.request,
-      vendor: input.vendor,
+      vendor,
       evaluation,
       evaluatedAt: now,
       status: "cooling_off",
@@ -122,6 +132,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
       evidence: [],
     };
 
+    assertAuthority("check.vendorSnapshot", "code");
     await this.ctx.storage.put("state", state);
     this.append("request.intake", {
       outcome: evaluation.outcome,
@@ -133,8 +144,8 @@ export class ChangeRequestDO extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(evaluation.eligibleAt);
       this.append("cooling_off.started", { until: evaluation.eligibleAt });
     } else {
-      status = "ready_for_review";
-      await this.ctx.storage.put("state", { ...state, status });
+      await this.alarm();
+      status = (await this.state())?.status ?? "cooling_off";
     }
 
     return Response.json({ status, evaluation });
@@ -165,6 +176,21 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
     let result: ApprovalResult;
     try {
+      assertAuthority("decide.approveChange", actor);
+      // The clock alone is not enough: the alarm must have revalidated the master.
+      if (state.status !== "ready_for_review") {
+        assertAuthority("check.reviewReadiness", "code");
+        this.append("request.approval_rejected", {
+          approverId,
+          actor,
+          reason: state.invalidationReason ?? state.status,
+        });
+        return Response.json(
+          { ok: false, reason: state.invalidationReason ?? state.status },
+          { status: 409 },
+        );
+      }
+
       result = approve(state.evaluation, approvals, now, this.policy());
     } catch (error) {
       if (error instanceof AuthorityViolation) {
@@ -252,8 +278,61 @@ export class ChangeRequestDO extends DurableObject<Env> {
     const state = await this.state();
     if (state === null) return;
 
-    const next: StoredState = { ...state, status: "ready_for_review" };
-    await this.ctx.storage.put("state", next);
-    this.append("cooling_off.elapsed", {});
+    if (state.status !== "cooling_off") return;
+    if (Date.now() < state.evaluation.eligibleAt) {
+      await this.ctx.storage.setAlarm(state.evaluation.eligibleAt);
+      return;
+    }
+
+    let current: Vendor;
+    try {
+      current = await readVendorMaster(this.env.VENDOR_MASTER, state.request.vendorId);
+    } catch {
+      await this.ctx.blockConcurrencyWhile(async () => {
+        const latest = await this.state();
+        if (
+          latest === null ||
+          latest.status !== "cooling_off" ||
+          latest.evaluatedAt !== state.evaluatedAt
+        )
+          return;
+        await this.ctx.storage.transaction(async () => {
+          assertAuthority("check.vendorRevalidationRetry", "code");
+          this.append("vendor.revalidation_failed", { vendorId: state.request.vendorId });
+          // Keep pending until an operator restores the master; never release on read failure.
+          await this.ctx.storage.setAlarm(Date.now() + 60_000);
+        });
+      });
+      return;
+    }
+
+    const changedFields = vendorChanges(state.vendor, current);
+    const changed = changedFields.length > 0;
+    const next: StoredState = changed
+      ? { ...state, status: "invalidated", invalidationReason: "vendor.changed_mid_flow" }
+      : { ...state, status: "ready_for_review" };
+
+    // KV reads yield to other requests. Recheck inside the storage concurrency gate
+    // and commit the transition and audit log together; duplicate alarms are no-ops.
+    // SQLite-backed DO transactions include top-level storage and SQL operations.
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const latest = await this.state();
+      if (
+        latest === null ||
+        latest.status !== "cooling_off" ||
+        latest.evaluatedAt !== state.evaluatedAt
+      )
+        return;
+      await this.ctx.storage.transaction(async () => {
+        assertAuthority("check.vendorRevalidation", "code");
+        await this.ctx.storage.put("state", next);
+        this.append("vendor.revalidated", { vendorId: state.request.vendorId, changedFields });
+        if (changed) {
+          this.append("vendor.changed_mid_flow", { changedFields });
+        } else {
+          this.append("cooling_off.elapsed", {});
+        }
+      });
+    });
   }
 }

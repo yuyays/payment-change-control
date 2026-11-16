@@ -25,7 +25,7 @@ export interface Evaluation {
   readonly eligibleAt: number;
 }
 
-export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected";
+export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected" | "invalidated";
 
 export interface ReviewEvidence {
   readonly approverId: string;
@@ -62,6 +62,7 @@ export interface RequestState {
   readonly vendor: Vendor;
   readonly evaluation: Evaluation;
   readonly status: Status;
+  readonly invalidationReason?: "vendor.changed_mid_flow";
   readonly approvals: ReadonlyArray<{ actor: string; approverId: string; at: number }>;
   readonly evidence: ReadonlyArray<ReviewEvidence>;
 }

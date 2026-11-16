@@ -6,6 +6,8 @@ import { createExtractor, ExtractionError } from "./extraction/index.js";
 export { ChangeRequestDO };
 
 export interface Env {
+  /** Trusted vendor master, keyed by vendor ID; never populated from email. */
+  readonly VENDOR_MASTER: KVNamespace;
   readonly CHANGE_REQUEST: DurableObjectNamespace<ChangeRequestDO>;
   /** Set to use a real model. Without it, the offline regex extractor runs. */
   readonly EXTRACTION_API_KEY?: string;

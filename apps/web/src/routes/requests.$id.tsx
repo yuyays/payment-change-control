@@ -153,7 +153,15 @@ function RequestRoute() {
         <header className="space-y-1">
           <p className="text-sm uppercase tracking-[0.2em] text-stone-500">{state.vendor.name}</p>
           <h1 className="text-3xl font-semibold">
-            {state.evaluation.outcome === "reject" ? "Rejected at intake" : "Pending human review"}
+            {state.status === "invalidated"
+              ? "Invalidated by vendor change"
+              : state.status === "approved"
+                ? "Approved"
+                : state.evaluation.outcome === "reject"
+                  ? "Rejected at intake"
+                  : state.status === "cooling_off"
+                    ? "Cooling off"
+                    : "Pending human review"}
           </h1>
           <p className="text-sm font-medium text-stone-800">
             {state.request.amount === undefined
@@ -274,11 +282,17 @@ function RequestRoute() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                {state.invalidationReason === undefined ? null : (
+                  <p className="rounded-md bg-red-50 p-2 text-xs text-red-800">
+                    Invalidated: {state.invalidationReason}. Start a new request after reconciling
+                    the vendor master.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     onClick={() => approval.mutate({ approverId: "clerk", actor: "human" })}
-                    disabled={approval.isPending}
+                    disabled={approval.isPending || state.status !== "ready_for_review"}
                   >
                     Approve as clerk
                   </Button>
@@ -286,7 +300,7 @@ function RequestRoute() {
                     size="sm"
                     variant="outline"
                     onClick={() => approval.mutate({ approverId: "controller", actor: "human" })}
-                    disabled={approval.isPending}
+                    disabled={approval.isPending || state.status !== "ready_for_review"}
                   >
                     Approve as controller
                   </Button>
