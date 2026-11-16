@@ -47,6 +47,7 @@ export interface Money {
 }
 
 export interface RequestState {
+  readonly reviewerCheck?: { claim: string; quote: string; start: number; end: number };
   readonly request: {
     readonly id: string;
     readonly vendorId: string;
@@ -74,11 +75,18 @@ export interface TraceEvent {
 }
 
 export interface StateResponse {
+  readonly reviewerSummary: null | {
+    total: number;
+    misses: number;
+    missRate: number | null;
+    gateWarning: boolean;
+  };
   readonly state: RequestState | null;
   readonly events: ReadonlyArray<TraceEvent>;
 }
 
 export interface SeedPayload {
+  readonly reviewerCheck?: boolean;
   readonly vendor: Vendor & { readonly bankAccount: { bankName: string; iban: string } };
   readonly email: { rawBody: string; fromAddress: string; replyTo: string | null };
   readonly receivedAt?: number;
@@ -181,3 +189,14 @@ export const approve = async (
   }
   return { ok: body["ok"] };
 };
+
+export const reject = (
+  id: string,
+  approverId: string,
+  evidence: { citationsOpened: number; dwellMs: number },
+): Promise<unknown> =>
+  fetch(url(`/requests/${id}/reject`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ approverId, actor: "human", evidence }),
+  }).then((r) => json<unknown>(r));

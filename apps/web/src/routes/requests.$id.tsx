@@ -4,7 +4,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { approve, getState, replay, type Claim, type ReplayResult } from "@/lib/api.js";
+import { approve, reject, getState, replay, type Claim, type ReplayResult } from "@/lib/api.js";
 import { formatMoney } from "@/lib/money.js";
 
 export const Route = createFileRoute("/requests/$id")({
@@ -107,6 +107,18 @@ function RequestRoute() {
     onError: (error: Error) => setMessage(error.message),
   });
 
+  const rejection = useMutation({
+    mutationFn: (approverId: string) =>
+      reject(id, approverId, {
+        citationsOpened: opened.size,
+        dwellMs: startedAt.current === null ? 0 : Date.now() - startedAt.current,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["state", id] });
+    },
+    onError: (error: Error) => setMessage(error.message),
+  });
+
   const [replayResult, setReplayResult] = useState<ReplayResult | null>(null);
   const [replayNote, setReplayNote] = useState<string | null>(null);
 
@@ -155,13 +167,15 @@ function RequestRoute() {
           <h1 className="text-3xl font-semibold">
             {state.status === "invalidated"
               ? "Invalidated by vendor change"
-              : state.status === "approved"
-                ? "Approved"
-                : state.evaluation.outcome === "reject"
-                  ? "Rejected at intake"
-                  : state.status === "cooling_off"
-                    ? "Cooling off"
-                    : "Pending human review"}
+              : state.status === "rejected"
+                ? "Rejected by reviewer"
+                : state.status === "approved"
+                  ? "Approved"
+                  : state.evaluation.outcome === "reject"
+                    ? "Rejected at intake"
+                    : state.status === "cooling_off"
+                      ? "Cooling off"
+                      : "Pending human review"}
           </h1>
           <p className="text-sm font-medium text-stone-800">
             {state.request.amount === undefined
@@ -208,6 +222,15 @@ function RequestRoute() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
+                {state.reviewerCheck ? (
+                  <div className="rounded border p-3">
+                    <p>{state.reviewerCheck.claim}</p>
+                    <Button size="sm" variant="outline" onClick={() => openCitation(-1)}>
+                      View evidence
+                    </Button>
+                    {opened.has(-1) ? <p className="text-xs">{state.reviewerCheck.quote}</p> : null}
+                  </div>
+                ) : null}
                 {state.evaluation.validClaims.length === 0 ? (
                   <p className="text-sm text-stone-500">No claim survived validation.</p>
                 ) : (
@@ -291,6 +314,22 @@ function RequestRoute() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
+                    variant="outline"
+                    disabled={rejection.isPending || state.status !== "ready_for_review"}
+                    onClick={() => rejection.mutate("clerk")}
+                  >
+                    Reject as clerk
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={rejection.isPending || state.status !== "ready_for_review"}
+                    onClick={() => rejection.mutate("controller")}
+                  >
+                    Reject as controller
+                  </Button>
+                  <Button
+                    size="sm"
                     onClick={() => approval.mutate({ approverId: "clerk", actor: "human" })}
                     disabled={approval.isPending || state.status !== "ready_for_review"}
                   >
@@ -339,6 +378,27 @@ function RequestRoute() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {stateQuery.data?.reviewerSummary ? (
+                  <div className="mb-3 text-sm">
+                    <p>
+                      Demo miss rate:{" "}
+                      {stateQuery.data.reviewerSummary.missRate === null
+                        ? "Not measured"
+                        : `${Math.round(stateQuery.data.reviewerSummary.missRate * 100)}%`}{" "}
+                      ({stateQuery.data.reviewerSummary.misses}/
+                      {stateQuery.data.reviewerSummary.total})
+                    </p>
+                    <p className="text-xs">
+                      First decision per reviewer. Approve = missed; reject = detected (proxy).
+                      Synthetic sample, not proof of detection.
+                    </p>
+                    {stateQuery.data.reviewerSummary.gateWarning ? (
+                      <p className="font-semibold text-red-700">
+                        High miss rate (≥50%): the authority gate may be a rubber stamp.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {state.evidence.length === 0 ? (
                   <p className="text-sm text-stone-500">No approvals recorded yet.</p>
                 ) : (

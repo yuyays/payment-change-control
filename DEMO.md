@@ -138,3 +138,24 @@ enumerated in `DESIGN.md` §9 and each has a test.
 - Don't say it prevents fraud. It prevents a fraudulent **change request** from being approved.
 - Don't quote the eval numbers as evidence about the real world. The cases are synthetic.
 - Don't say the model can't be fooled. Say it can be fooled and it doesn't matter.
+
+## Reviewer detection probe (demo only)
+
+With `DEMO_MODE=1`, **Load demo data** adds one synthetic packet annotation to
+**Bank merger**: “The supplier says its bank account has not changed.” Its citation
+is the actual email, which says the opposite. This is not a fabricated citation
+or a model extraction and never enters evaluation, replay, or payment details.
+Intake accepts `reviewerCheck: true` only in demo mode.
+
+Approve as clerk/controller to record a miss, or reject as either reviewer to
+record detection. The first eligible human decision per reviewer counts; the
+first approval counts even though two approvals are required to finish the request.
+Model attempts, cooling-off attempts, and code-rejected requests do not count as
+approval misses. Rejection is terminal. Reloading the packet retains the sample.
+Re-seeding deliberately resets the demo sample.
+
+**Review evidence** shows misses / distinct reviewers next to citation opens and
+dwell time. No decisions means “Not measured”, not zero. At ≥50% misses it warns
+that the authority gate may be a rubber stamp. This is a per-request synthetic
+sample, not a production accuracy estimate: rejection is only a detection proxy
+and may have another cause. Do not interpret a low miss rate as proof of safety.

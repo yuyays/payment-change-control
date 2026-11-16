@@ -16,12 +16,20 @@ import { DurableObject } from "cloudflare:workers";
 import { createExtractor } from "./extraction/index.js";
 import { readVendorMaster } from "./vendor-master.js";
 import { diffClaims } from "./replay.js";
+import {
+  makeReviewerCheck,
+  reviewerSummary,
+  type ReviewerCheck,
+  type ReviewerDecision,
+} from "./reviewer-check.js";
 import type { ReviewEvidence } from "./review-evidence.js";
 import type { Env } from "./index.js";
 
 export type Status = "cooling_off" | "ready_for_review" | "approved" | "rejected" | "invalidated";
 
 interface StoredState {
+  readonly reviewerCheck?: ReviewerCheck;
+  readonly reviewerDecisions?: ReadonlyArray<ReviewerDecision>;
   readonly request: ChangeRequest;
   readonly vendor: Vendor;
   readonly evaluation: Evaluation;
@@ -82,7 +90,9 @@ export class ChangeRequestDO extends DurableObject<Env> {
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname === "/intake") {
-      return this.intake(await request.json<{ request: ChangeRequest; vendor: Vendor }>());
+      return this.intake(
+        await request.json<{ request: ChangeRequest; vendor: Vendor; reviewerCheck?: boolean }>(),
+      );
     }
 
     if (request.method === "POST" && url.pathname === "/approve") {
@@ -92,6 +102,42 @@ export class ChangeRequestDO extends DurableObject<Env> {
         evidence?: { citationsOpened: number; dwellMs: number };
       }>();
       return this.handleApproval(body.approverId, body.actor ?? "human", body.evidence);
+    }
+
+    if (request.method === "POST" && url.pathname === "/reject") {
+      const body = await request.json<{
+        approverId: string;
+        actor?: "human" | "model";
+        evidence?: { citationsOpened: number; dwellMs: number };
+      }>();
+      if (body.actor !== undefined && body.actor !== "human")
+        return Response.json({ error: "authority_violation" }, { status: 403 });
+      const state = await this.state();
+      if (state === null) return new Response("No request", { status: 404 });
+      if (state.status !== "ready_for_review" || !body.approverId?.trim())
+        return Response.json({ error: "not_ready" }, { status: 409 });
+      assertAuthority("decide.rejectChange", "human");
+      await this.ctx.storage.put("state", {
+        ...state,
+        status: "rejected",
+        evidence: [
+          ...state.evidence,
+          {
+            approverId: body.approverId,
+            at: Date.now(),
+            citationsOpened: body.evidence?.citationsOpened ?? 0,
+            dwellMs: body.evidence?.dwellMs ?? 0,
+          },
+        ],
+        reviewerDecisions: state.reviewerCheck
+          ? [
+              ...(state.reviewerDecisions ?? []),
+              { approverId: body.approverId, decision: "reject" },
+            ]
+          : state.reviewerDecisions,
+      });
+      this.append("request.rejected", { approverId: body.approverId });
+      return Response.json({ ok: true });
     }
 
     if (request.method === "POST" && url.pathname === "/replay") {
@@ -106,13 +152,23 @@ export class ChangeRequestDO extends DurableObject<Env> {
           "SELECT seq, at, type, payload FROM events ORDER BY seq",
         )
         .toArray();
-      return Response.json({ state, events });
+      return Response.json({
+        state,
+        events,
+        reviewerSummary: state?.reviewerCheck
+          ? reviewerSummary(state.reviewerDecisions ?? [])
+          : null,
+      });
     }
 
     return new Response("Not found", { status: 404 });
   }
 
-  private async intake(input: { request: ChangeRequest; vendor: Vendor }): Promise<Response> {
+  private async intake(input: {
+    request: ChangeRequest;
+    vendor: Vendor;
+    reviewerCheck?: boolean;
+  }): Promise<Response> {
     const now = Date.now();
     let vendor: Vendor;
     try {
@@ -122,7 +178,12 @@ export class ChangeRequestDO extends DurableObject<Env> {
     }
     const evaluation = evaluate(input.request, vendor, now, this.policy());
 
+    const inject = this.env.DEMO_MODE === "1" && input.reviewerCheck === true;
+    assertAuthority("demo.injectReviewerCheck", "code");
     const state: StoredState = {
+      ...(inject
+        ? { reviewerCheck: makeReviewerCheck(input.request.rawBody), reviewerDecisions: [] }
+        : {}),
       request: input.request,
       vendor,
       evaluation,
@@ -212,14 +273,36 @@ export class ChangeRequestDO extends DurableObject<Env> {
       throw error;
     }
 
+    // Only eligible human decisions count; duplicates cannot inflate the denominator.
+    let reviewerDecisions = state.reviewerDecisions ?? [];
+    if (
+      state.evaluation.outcome !== "reject" &&
+      state.reviewerCheck &&
+      approverId.trim() &&
+      !state.approvals.some((a) => a.approverId === approverId)
+    ) {
+      assertAuthority("check.reviewerMeasurement", "code");
+      reviewerDecisions = [
+        ...(state.reviewerDecisions ?? []),
+        { approverId, decision: "approve" as const },
+      ];
+      this.append("reviewer.decision", { approverId, decision: "approve" });
+    }
+
     if (result.ok) {
-      const next: StoredState = { ...state, approvals, evidence, status: "approved" };
+      const next: StoredState = {
+        ...state,
+        approvals,
+        evidence,
+        reviewerDecisions,
+        status: "approved",
+      };
       await this.ctx.storage.put("state", next);
       this.append("request.approved", { approverId });
       return Response.json({ ok: true, status: next.status });
     }
 
-    const next: StoredState = { ...state, approvals, evidence };
+    const next: StoredState = { ...state, approvals, evidence, reviewerDecisions };
     await this.ctx.storage.put("state", next);
     this.append("request.approval_rejected", { approverId, actor, reason: result.reason });
     return Response.json({ ok: false, reason: result.reason }, { status: 409 });
