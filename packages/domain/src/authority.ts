@@ -8,6 +8,9 @@ import type { DecisionOwner } from "./types.js";
  * so the table on screen is the table being enforced.
  */
 export const AUTHORITY = {
+  "demo.injectReviewerCheck": "code",
+  "check.reviewerMeasurement": "code",
+  "decide.rejectChange": "human",
   "extract.claims": "model",
   "extract.citation.verify": "code",
   "check.senderDomain": "code",

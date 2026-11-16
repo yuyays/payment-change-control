@@ -39,6 +39,7 @@ const make = (
     vendor: DEMO_VENDOR,
     email: { rawBody: body, fromAddress, replyTo },
     receivedAt,
+    ...(id === "change-1041" ? { reviewerCheck: true } : {}),
     ...(amount === undefined ? {} : { amount }),
   },
 });

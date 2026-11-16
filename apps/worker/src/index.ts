@@ -71,9 +71,10 @@ export default {
       return json({ ok: true, service: "payment-change-control" });
     }
 
-    const match = /^\/api\/requests\/([A-Za-z0-9_-]+)\/(intake|approve|state|extract|replay)$/.exec(
-      url.pathname,
-    );
+    const match =
+      /^\/api\/requests\/([A-Za-z0-9_-]+)\/(intake|approve|reject|state|extract|replay)$/.exec(
+        url.pathname,
+      );
     if (match === null) return json({ error: "not_found" }, 404);
 
     const id = match[1];
@@ -101,6 +102,7 @@ export default {
 
     if (action === "intake") {
       const body = await request.json<{
+        reviewerCheck?: boolean;
         vendor: Vendor;
         email?: EmailInput;
         eml?: string;
@@ -146,7 +148,11 @@ export default {
         new Request("https://do/intake", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ request: changeRequest, vendor: body.vendor }),
+          body: JSON.stringify({
+            request: changeRequest,
+            vendor: body.vendor,
+            reviewerCheck: env.DEMO_MODE === "1" && body.reviewerCheck === true,
+          }),
         }),
       );
 
