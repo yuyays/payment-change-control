@@ -15,6 +15,7 @@ export const AUTHORITY = {
   "check.callbackSource": "code",
   "check.coolingOff": "code",
   "check.changeFrequency": "code",
+  "check.vendorRevalidation": "code",
   "decide.approveChange": "human",
   "decide.releasePayment": "human",
 } as const satisfies Record<string, DecisionOwner>;

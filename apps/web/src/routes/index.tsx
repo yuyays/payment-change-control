@@ -21,6 +21,7 @@ interface Row {
 const statusStyle: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-800",
   rejected: "bg-red-100 text-red-800",
+  invalidated: "bg-red-100 text-red-800",
   blocked: "bg-red-100 text-red-800",
   cooling_off: "bg-amber-100 text-amber-800",
   ready_for_review: "bg-sky-100 text-sky-800",
@@ -29,6 +30,7 @@ const statusStyle: Record<string, string> = {
 
 const label = (state: RequestState | null): string => {
   if (state === null) return "not loaded";
+  if (state.status === "invalidated") return "invalidated";
   if (state.status === "approved") return "approved";
   if (state.evaluation.outcome === "reject") return "rejected";
   const blocking = state.evaluation.reasons.filter((r) => r.blocking).length;

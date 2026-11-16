@@ -274,6 +274,12 @@ function RequestRoute() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                {state.invalidationReason === undefined ? null : (
+                  <p className="rounded-md bg-red-50 p-2 text-xs text-red-800">
+                    Invalidated: {state.invalidationReason}. Start a new request after reconciling
+                    the vendor master.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"

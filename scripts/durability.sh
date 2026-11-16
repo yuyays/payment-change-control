@@ -59,6 +59,12 @@ json.dump(payload, open(sys.argv[1], "w"))
 PY
 
 rm -rf "$PERSIST"
+python3 - "$PAYLOAD" <<'PYMASTER'
+import json, sys
+json.dump(json.load(open(sys.argv[1]))["vendor"], open("/tmp/pcc-vendor-master.json", "w"))
+PYMASTER
+( cd "$WORKER" && npx wrangler kv key put v-acme --binding VENDOR_MASTER --local \
+    --persist-to "$PERSIST" --path /tmp/pcc-vendor-master.json >/dev/null )
 echo "1. intake"
 start
 curl -s "$BASE/api/requests/dur-1/state" > /dev/null   # warm the DO before the clock matters

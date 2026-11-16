@@ -14,6 +14,7 @@
       },
     ],
   },
+  "kv_namespaces": [{ "binding": "VENDOR_MASTER", "id": "00000000000000000000000000000000" }],
   "migrations": [
     {
       "tag": "v1",
