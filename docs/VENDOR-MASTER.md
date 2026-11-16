@@ -1,7 +1,7 @@
 # Vendor master revalidation
 
 The worker reads the trusted `VENDOR_MASTER` KV binding when the cooling-off
-alarm fires. Each key is a vendor ID, and its JSON value is a domain `Vendor`
+alarm fires and at intake to freeze a trusted baseline. Each key is a vendor ID, and its JSON value is a domain `Vendor`
 (`id`, `name`, `registeredDomain`, `phoneOnFile`, `bankAccount` with `bankName`
 and `iban`, and nullable `lastBankChangeAt`). Only trusted master-data tooling
 should write this namespace. Intake and email extraction never write it.
@@ -17,8 +17,9 @@ pnpm exec wrangler kv key put v-acme --binding VENDOR_MASTER --local --path /pat
 
 Use the same persistence directory as `wrangler dev` (supply `--persist-to` to
 both commands if customized). `scripts/durability.sh` provisions its own fixture.
-Existing demo intake payloads still supply the snapshot, but the corresponding
-master entry must now exist before the request can leave cooling-off.
+Intake payloads still identify the vendor, but caller-supplied vendor values are
+ignored. The corresponding master entry must exist at intake; unavailable or
+invalid master data returns HTTP 503 without creating a request.
 
 The alarm compares the intake snapshot with the fetched record using exact
 values. A bank name, IBAN, registered domain or phone change sets status to
@@ -30,7 +31,9 @@ not invalidate. An unchanged record produces `vendor.revalidated` and the usual
 
 Missing, malformed, mismatched-ID or unavailable master data produces
 `vendor.revalidation_failed`; the request remains pending and the alarm is
-rescheduled for one minute later. Approval requires `ready_for_review`, not merely
+rescheduled for one minute later. Retries have no automatic cutoff: operators must
+monitor `vendor.revalidation_failed` events and restore missing records or bindings;
+the request never becomes reviewable during an outage. Approval requires `ready_for_review`, not merely
 an elapsed clock. Invalidated requests cannot be approved or revived by duplicate
 alarms; start a new request after reconciling the change. The original snapshot
 and evaluation remain untouched for replay.

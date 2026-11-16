@@ -50,16 +50,16 @@ function harness() {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Other bindings are unused by the lifecycle under test.
     { VENDOR_MASTER: { get }, COOLING_OFF_SECONDS: "1" } as unknown as Env,
   );
-  const intake = () =>
+  const intake = (suppliedVendor = vendor, receivedAt = Date.now()) =>
     object.fetch(
       new Request("https://do/intake", {
         method: "POST",
         body: JSON.stringify({
-          vendor,
+          vendor: suppliedVendor,
           request: {
             id: "r1",
             vendorId: vendor.id,
-            receivedAt: Date.now(),
+            receivedAt,
             rawBody: "ABC",
             extraction: {
               fromAddress: "a@vendor.example",
@@ -95,6 +95,29 @@ describe("cooling-off master revalidation", () => {
     vi.useRealTimers();
   });
 
+  it("snapshots trusted master data rather than caller-supplied values", async () => {
+    const h = harness();
+    const response = await h.intake({ ...vendor, phoneOnFile: "attacker" });
+    expect(response.status).toBe(200);
+    expect(h.records.get("state")).toMatchObject({ vendor });
+  });
+
+  it("refuses intake without a trusted snapshot and permits retry after recovery", async () => {
+    const h = harness();
+    h.get.mockResolvedValue(null);
+    expect((await h.intake()).status).toBe(503);
+    expect(h.records.has("state")).toBe(false);
+    expect(h.setAlarm).not.toHaveBeenCalled();
+    h.get.mockResolvedValue(vendor);
+    expect((await h.intake()).status).toBe(200);
+  });
+
+  it("revalidates immediately for a backdated request", async () => {
+    const h = harness();
+    expect((await h.intake(vendor, 0)).status).toBe(200);
+    expect(h.records.get("state")).toMatchObject({ status: "ready_for_review" });
+  });
+
   it("refetches and audits unchanged data, leaving the intake snapshot intact", async () => {
     const h = harness();
     await h.intake();
@@ -107,7 +130,7 @@ describe("cooling-off master revalidation", () => {
       payload: { vendorId: "v1", changedFields: [] },
     });
     await h.object.alarm();
-    expect(h.get).toHaveBeenCalledTimes(1);
+    expect(h.get).toHaveBeenCalledTimes(2);
     await h.approve("one");
     expect((await h.approve("two")).status).toBe(200);
     await h.object.alarm();
@@ -134,7 +157,7 @@ describe("cooling-off master revalidation", () => {
     expect((await h.approve("one")).status).toBe(409);
     expect((await h.approve("two")).status).toBe(409);
     await h.object.alarm();
-    expect(h.get).toHaveBeenCalledTimes(1);
+    expect(h.get).toHaveBeenCalledTimes(2);
   });
 
   it("does not release requests merely because the clock elapsed", async () => {

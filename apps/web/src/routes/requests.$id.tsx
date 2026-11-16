@@ -284,7 +284,7 @@ function RequestRoute() {
                   <Button
                     size="sm"
                     onClick={() => approval.mutate({ approverId: "clerk", actor: "human" })}
-                    disabled={approval.isPending}
+                    disabled={approval.isPending || state.status !== "ready_for_review"}
                   >
                     Approve as clerk
                   </Button>
@@ -292,7 +292,7 @@ function RequestRoute() {
                     size="sm"
                     variant="outline"
                     onClick={() => approval.mutate({ approverId: "controller", actor: "human" })}
-                    disabled={approval.isPending}
+                    disabled={approval.isPending || state.status !== "ready_for_review"}
                   >
                     Approve as controller
                   </Button>
@@ -302,7 +302,7 @@ function RequestRoute() {
                   variant="outline"
                   className="border-red-300 text-red-700 hover:bg-red-50"
                   onClick={() => approval.mutate({ approverId: "claude", actor: "model" })}
-                  disabled={approval.isPending}
+                  disabled={approval.isPending || state.status !== "ready_for_review"}
                 >
                   Try to approve as the model
                 </Button>

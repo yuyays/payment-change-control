@@ -98,6 +98,40 @@ curl -s -X POST "$BASE/api/requests/dur-1/approve" -H 'content-type: application
   -d '{"approverId":"controller"}' > /dev/null
 check "two distinct approvers approve" "$(status_of dur-1)" "approved"
 
+echo "5. master drift across process restart"
+# Give this scenario a fresh cooling window.
+python3 - "$PAYLOAD" <<'PYFRESH'
+import json, sys, time
+p = json.load(open(sys.argv[1]))
+p["receivedAt"] = int(time.time() * 1000)
+json.dump(p, open(sys.argv[1], "w"))
+PYFRESH
+curl -sf -X POST "$BASE/api/requests/dur-changed/intake" -H 'content-type: application/json' \
+  --data-binary "@$PAYLOAD" > /dev/null
+check "drift scenario begins cooling" "$(status_of dur-changed)" "cooling_off"
+stop
+python3 - <<'PYCHANGED'
+import json
+p = json.load(open("/tmp/pcc-vendor-master.json"))
+p["phoneOnFile"] = "+81 3 5555 9999"
+json.dump(p, open("/tmp/pcc-vendor-master-changed.json", "w"))
+PYCHANGED
+( cd "$WORKER" && npx wrangler kv key put v-acme --binding VENDOR_MASTER --local \
+    --persist-to "$PERSIST" --path /tmp/pcc-vendor-master-changed.json >/dev/null )
+start
+sleep 10
+check "changed master invalidates after restart" "$(status_of dur-changed)" "invalidated"
+check "invalidated request rejects approval" \
+  "$(curl -s -o /tmp/pcc-invalid-approval.json -w '%{http_code}' -X POST \
+    "$BASE/api/requests/dur-changed/approve" -H 'content-type: application/json' \
+    -d '{"approverId":"controller"}')" "409"
+curl -sf "$BASE/api/requests/dur-changed/state" > /tmp/pcc-invalid-state.json
+check "invalidation audit survived" \
+  "$(cat /tmp/pcc-invalid-state.json | json "sum(e['type'] == 'vendor.changed_mid_flow' for e in d['events'])")" "1"
+stop
+start
+check "invalidation remains terminal after restart" "$(status_of dur-changed)" "invalidated"
+
 echo
 if [ "$FAILURES" -eq 0 ]; then
   echo "durability: all checks passed"

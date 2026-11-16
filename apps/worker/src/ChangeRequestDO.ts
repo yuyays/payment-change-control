@@ -114,11 +114,17 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
   private async intake(input: { request: ChangeRequest; vendor: Vendor }): Promise<Response> {
     const now = Date.now();
-    const evaluation = evaluate(input.request, input.vendor, now, this.policy());
+    let vendor: Vendor;
+    try {
+      vendor = await readVendorMaster(this.env.VENDOR_MASTER, input.request.vendorId);
+    } catch {
+      return Response.json({ error: "vendor_master_unavailable" }, { status: 503 });
+    }
+    const evaluation = evaluate(input.request, vendor, now, this.policy());
 
     const state: StoredState = {
       request: input.request,
-      vendor: input.vendor,
+      vendor,
       evaluation,
       evaluatedAt: now,
       status: "cooling_off",
@@ -126,6 +132,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
       evidence: [],
     };
 
+    assertAuthority("check.vendorSnapshot", "code");
     await this.ctx.storage.put("state", state);
     this.append("request.intake", {
       outcome: evaluation.outcome,
@@ -154,6 +161,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
     // The clock alone is not enough: the alarm must have revalidated the master.
     if (state.status !== "ready_for_review") {
+      assertAuthority("check.reviewReadiness", "code");
       this.append("request.approval_rejected", {
         approverId,
         actor,
@@ -279,9 +287,21 @@ export class ChangeRequestDO extends DurableObject<Env> {
     try {
       current = await readVendorMaster(this.env.VENDOR_MASTER, state.request.vendorId);
     } catch {
-      this.append("vendor.revalidation_failed", { vendorId: state.request.vendorId });
-      // Keep the request pending, including after the platform's alarm retries run out.
-      await this.ctx.storage.setAlarm(Date.now() + 60_000);
+      await this.ctx.blockConcurrencyWhile(async () => {
+        const latest = await this.state();
+        if (
+          latest === null ||
+          latest.status !== "cooling_off" ||
+          latest.evaluatedAt !== state.evaluatedAt
+        )
+          return;
+        await this.ctx.storage.transaction(async () => {
+          assertAuthority("check.vendorRevalidationRetry", "code");
+          this.append("vendor.revalidation_failed", { vendorId: state.request.vendorId });
+          // Keep pending until an operator restores the master; never release on read failure.
+          await this.ctx.storage.setAlarm(Date.now() + 60_000);
+        });
+      });
       return;
     }
 
@@ -293,6 +313,7 @@ export class ChangeRequestDO extends DurableObject<Env> {
 
     // KV reads yield to other requests. Recheck inside the storage concurrency gate
     // and commit the transition and audit log together; duplicate alarms are no-ops.
+    // SQLite-backed DO transactions include top-level storage and SQL operations.
     await this.ctx.blockConcurrencyWhile(async () => {
       const latest = await this.state();
       if (
