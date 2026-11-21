@@ -14,6 +14,7 @@ export async function readVendorMaster(master: KVNamespace, vendorId: string): P
     typeof value.registeredDomain !== "string" ||
     !("phoneOnFile" in value) ||
     typeof value.phoneOnFile !== "string" ||
+    value.phoneOnFile.trim() === "" ||
     !("bankAccount" in value) ||
     typeof value.bankAccount !== "object" ||
     value.bankAccount === null ||

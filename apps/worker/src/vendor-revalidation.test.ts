@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { Vendor } from "@pcc/domain";
+import { CALLBACK_WINDOW_MS, type Vendor } from "@pcc/domain";
 
 vi.mock("cloudflare:workers", () => ({
   DurableObject: class {
@@ -83,7 +83,13 @@ function harness() {
         body: JSON.stringify({ approverId, actor }),
       }),
     );
-  return { object, intake, approve, records, events, get, setAlarm };
+  const callback = (
+    body: unknown = { actor: "human", operatorId: "reviewer", outcome: "completed" },
+  ) =>
+    object.fetch(
+      new Request("https://do/callback", { method: "POST", body: JSON.stringify(body) }),
+    );
+  return { object, intake, approve, callback, records, events, get, setAlarm };
 }
 
 describe("cooling-off master revalidation", () => {
@@ -99,7 +105,10 @@ describe("cooling-off master revalidation", () => {
     const h = harness();
     const response = await h.intake({ ...vendor, phoneOnFile: "attacker" });
     expect(response.status).toBe(200);
-    expect(h.records.get("state")).toMatchObject({ vendor });
+    expect(h.records.get("state")).toMatchObject({
+      vendor,
+      callback: { status: "pending", phoneOnFile: vendor.phoneOnFile },
+    });
   });
 
   it("refuses intake without a trusted snapshot and permits retry after recovery", async () => {
@@ -131,6 +140,7 @@ describe("cooling-off master revalidation", () => {
     });
     await h.object.alarm();
     expect(h.get).toHaveBeenCalledTimes(2);
+    expect((await h.callback()).status).toBe(200);
     await h.approve("one");
     expect((await h.approve("two")).status).toBe(200);
     await h.object.alarm();
@@ -145,6 +155,7 @@ describe("cooling-off master revalidation", () => {
   ])("invalidates on critical change %j and cannot be approved", async (change) => {
     const h = harness();
     await h.intake();
+    expect((await h.callback()).status).toBe(200);
     h.get.mockResolvedValue({ ...vendor, ...change });
     vi.advanceTimersByTime(1000);
     await h.object.alarm();
@@ -181,22 +192,24 @@ describe("cooling-off master revalidation", () => {
     expect((await h.approve("two")).status).toBe(409);
   });
 
-  it.each([null, { id: "wrong" }, { ...vendor, bankAccount: null }])(
-    "fails closed on missing/invalid master %j and retries",
-    async (value) => {
-      const h = harness();
-      await h.intake();
-      h.get.mockResolvedValue(value);
-      vi.advanceTimersByTime(1000);
-      await h.object.alarm();
-      expect(h.records.get("state")).toMatchObject({ status: "cooling_off" });
-      expect(h.events.at(-1)?.type).toBe("vendor.revalidation_failed");
-      expect(h.setAlarm).toHaveBeenLastCalledWith(71_000);
-      h.get.mockResolvedValue(vendor);
-      await h.object.alarm();
-      expect(h.records.get("state")).toMatchObject({ status: "ready_for_review" });
-    },
-  );
+  it.each([
+    null,
+    { id: "wrong" },
+    { ...vendor, bankAccount: null },
+    { ...vendor, phoneOnFile: " " },
+  ])("fails closed on missing/invalid master %j and retries", async (value) => {
+    const h = harness();
+    await h.intake();
+    h.get.mockResolvedValue(value);
+    vi.advanceTimersByTime(1000);
+    await h.object.alarm();
+    expect(h.records.get("state")).toMatchObject({ status: "cooling_off" });
+    expect(h.events.at(-1)?.type).toBe("vendor.revalidation_failed");
+    expect(h.setAlarm).toHaveBeenLastCalledWith(71_000);
+    h.get.mockResolvedValue(vendor);
+    await h.object.alarm();
+    expect(h.records.get("state")).toMatchObject({ status: "ready_for_review" });
+  });
 
   it("keeps pending on master I/O failure", async () => {
     const h = harness();
@@ -205,5 +218,105 @@ describe("cooling-off master revalidation", () => {
     h.get.mockRejectedValue(new Error("unavailable"));
     await h.object.alarm();
     expect(h.records.get("state")).toMatchObject({ status: "cooling_off" });
+  });
+});
+
+describe("registered-number callback", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("blocks approval collection until completion and prevents overwriting the evidence", async () => {
+    const h = harness();
+    await h.intake(vendor, 0);
+    const blocked = await h.approve("one");
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ reason: "callback.pending" });
+    expect(h.records.get("state")).toMatchObject({ approvals: [] });
+    expect((await h.callback()).status).toBe(200);
+    expect((await h.callback()).status).toBe(200);
+    expect((await h.intake()).status).toBe(409);
+    expect(h.events.filter((event) => event.type === "callback.completed")).toEqual([
+      {
+        type: "callback.completed",
+        payload: {
+          status: "completed",
+          operatorId: "reviewer",
+          resolvedAt: 10_000,
+          phoneOnFile: vendor.phoneOnFile,
+          createdAt: 10_000,
+          expiresAt: 10_000 + CALLBACK_WINDOW_MS,
+        },
+      },
+    ]);
+    expect((await h.approve("two")).status).toBe(409);
+    expect((await h.approve("one")).status).toBe(200);
+  });
+
+  it("records failure, rejects a change of outcome, and never counts it as verification", async () => {
+    const h = harness();
+    await h.intake(vendor, 0);
+    expect(
+      (await h.callback({ actor: "human", operatorId: "reviewer", outcome: "failed" })).status,
+    ).toBe(200);
+    expect((await h.callback()).status).toBe(409);
+    const approval = await h.approve("one");
+    expect(await approval.json()).toMatchObject({ reason: "callback.failed" });
+    expect(h.events.at(-2)?.type).toBe("callback.failed");
+  });
+
+  it.each([true, false])(
+    "expires at the deadline with or without the alarm first (%s)",
+    async (alarmFirst) => {
+      const h = harness();
+      await h.intake(vendor, 0);
+      expect(h.setAlarm).toHaveBeenLastCalledWith(10_000 + CALLBACK_WINDOW_MS);
+      vi.advanceTimersByTime(CALLBACK_WINDOW_MS);
+      if (alarmFirst) await h.object.alarm();
+      expect((await h.callback()).status).toBe(409);
+      expect(await (await h.approve("one")).json()).toMatchObject({ reason: "callback.expired" });
+      expect(h.records.get("state")).toMatchObject({ callback: { status: "expired" } });
+      expect(h.events.filter((event) => event.type === "callback.expired")).toHaveLength(1);
+    },
+  );
+
+  it("preserves a callback recorded while master revalidation is in flight", async () => {
+    const h = harness();
+    await h.intake();
+    vi.advanceTimersByTime(1000);
+    const master = Promise.withResolvers<Vendor>();
+    const started = Promise.withResolvers<void>();
+    h.get.mockImplementationOnce(() => {
+      started.resolve();
+      return master.promise;
+    });
+    const alarm = h.object.alarm();
+    await started.promise;
+    const response = await h.callback();
+    master.resolve(vendor);
+    await alarm;
+    expect(response.status).toBe(200);
+    expect(h.records.get("state")).toMatchObject({
+      status: "ready_for_review",
+      callback: { status: "completed", operatorId: "reviewer" },
+    });
+  });
+
+  it("rejects malformed reports and denies the model authority to record a result", async () => {
+    const h = harness();
+    await h.intake();
+    expect(
+      (await h.callback({ actor: "human", operatorId: " ", outcome: "completed" })).status,
+    ).toBe(400);
+    expect(
+      (await h.callback({ actor: "model", operatorId: "reviewer", outcome: "completed" })).status,
+    ).toBe(403);
+    expect(h.records.get("state")).toMatchObject({ callback: { status: "pending" } });
+    expect(h.events.at(-1)).toMatchObject({
+      type: "authority.violation",
+      payload: { action: "callback.report" },
+    });
   });
 });

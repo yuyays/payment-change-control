@@ -1,3 +1,5 @@
+import type { CallbackChallenge, CallbackReport } from "@pcc/domain";
+
 export interface ClaimCitation {
   readonly field: string;
   readonly quote: string;
@@ -62,6 +64,7 @@ export interface RequestState {
   readonly vendor: Vendor;
   readonly evaluation: Evaluation;
   readonly status: Status;
+  readonly callback?: CallbackChallenge;
   readonly invalidationReason?: "vendor.changed_mid_flow";
   readonly approvals: ReadonlyArray<{ actor: string; approverId: string; at: number }>;
   readonly evidence: ReadonlyArray<ReviewEvidence>;
@@ -127,12 +130,19 @@ export const seedEml = (id: string, vendor: SeedPayload["vendor"], eml: string):
     body: JSON.stringify({ vendor, eml }),
   }).then((r) => json<unknown>(r));
 
-export const seed = (id: string, payload: SeedPayload): Promise<unknown> =>
-  fetch(url(`/requests/${id}/intake`), {
+export const seedDemoRequest = async (id: string, payload: SeedPayload): Promise<void> => {
+  const response = await fetch(url(`/requests/${id}/intake`), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
-  }).then((r) => json<unknown>(r));
+  });
+  if (response.status === 409) {
+    const body: unknown = await response.json();
+    if (isRecord(body) && body["error"] === "request_already_exists") return;
+    throw new Error(messageOf(body, response.status));
+  }
+  await json<unknown>(response);
+};
 
 export interface ReplayResult {
   readonly decision: {
@@ -181,3 +191,10 @@ export const approve = async (
   }
   return { ok: body["ok"] };
 };
+
+export const recordCallback = (id: string, outcome: CallbackReport, operatorId: string) =>
+  fetch(url(`/requests/${id}/callback`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ outcome, operatorId, actor: "human" }),
+  }).then((r) => json<{ callback: CallbackChallenge }>(r));

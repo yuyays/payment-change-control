@@ -1,12 +1,17 @@
 import {
   approve,
   assertAuthority,
+  callbackApprovalBlock,
+  createCallback,
+  expireCallback,
+  reportCallback,
   vendorChanges,
   AuthorityViolation,
   DEFAULT_POLICY,
   evaluate,
   type Approval,
   type ApprovalResult,
+  type CallbackChallenge,
   type ChangeRequest,
   type Evaluation,
   type Policy,
@@ -29,6 +34,8 @@ interface StoredState {
   readonly evaluatedAt: number;
   readonly status: Status;
   readonly approvals: ReadonlyArray<Approval>;
+  /** Absent on requests created before callback verification was introduced. */
+  readonly callback?: CallbackChallenge;
   readonly invalidationReason?: "vendor.changed_mid_flow";
   /** What each approver did before deciding. Telemetry, not a decision input. */
   readonly evidence: ReadonlyArray<ReviewEvidence>;
@@ -85,6 +92,10 @@ export class ChangeRequestDO extends DurableObject<Env> {
       return this.intake(await request.json<{ request: ChangeRequest; vendor: Vendor }>());
     }
 
+    if (request.method === "POST" && url.pathname === "/callback") {
+      return this.handleCallback(await request.json().catch(() => null));
+    }
+
     if (request.method === "POST" && url.pathname === "/approve") {
       const body = await request.json<{
         approverId: string;
@@ -100,28 +111,31 @@ export class ChangeRequestDO extends DurableObject<Env> {
     }
 
     if (request.method === "GET" && url.pathname === "/state") {
-      const state = await this.state();
-      const events = this.ctx.storage.sql
-        .exec<{ seq: number; at: number; type: string; payload: string | null }>(
-          "SELECT seq, at, type, payload FROM events ORDER BY seq",
-        )
-        .toArray();
-      return Response.json({ state, events });
+      return this.ctx.storage.transaction(async () => {
+        const state = await this.currentState(Date.now());
+        const events = this.ctx.storage.sql
+          .exec<{ seq: number; at: number; type: string; payload: string | null }>(
+            "SELECT seq, at, type, payload FROM events ORDER BY seq",
+          )
+          .toArray();
+        return Response.json({ state, events });
+      });
     }
 
     return new Response("Not found", { status: 404 });
   }
 
   private async intake(input: { request: ChangeRequest; vendor: Vendor }): Promise<Response> {
-    const now = Date.now();
     let vendor: Vendor;
     try {
       vendor = await readVendorMaster(this.env.VENDOR_MASTER, input.request.vendorId);
     } catch {
       return Response.json({ error: "vendor_master_unavailable" }, { status: 503 });
     }
+    const now = Date.now();
     const evaluation = evaluate(input.request, vendor, now, this.policy());
 
+    const callback = createCallback(vendor.phoneOnFile, now);
     const state: StoredState = {
       request: input.request,
       vendor,
@@ -130,25 +144,117 @@ export class ChangeRequestDO extends DurableObject<Env> {
       status: "cooling_off",
       approvals: [],
       evidence: [],
+      callback,
     };
 
-    assertAuthority("check.vendorSnapshot", "code");
-    await this.ctx.storage.put("state", state);
-    this.append("request.intake", {
-      outcome: evaluation.outcome,
-      reasons: evaluation.reasons.map((r) => r.code),
+    const created = await this.ctx.storage.transaction(async () => {
+      // The request ID is the idempotency key; re-intake cannot reset callback evidence.
+      if ((await this.state()) !== null) return false;
+      assertAuthority("check.vendorSnapshot", "code");
+      assertAuthority("callback.create", "code");
+      await this.ctx.storage.put("state", state);
+      this.append("request.intake", {
+        outcome: evaluation.outcome,
+        reasons: evaluation.reasons.map((r) => r.code),
+      });
+      this.append("callback.created", callback);
+      await this.scheduleAlarm(state, evaluation.eligibleAt);
+      if (now < evaluation.eligibleAt) {
+        this.append("cooling_off.started", { until: evaluation.eligibleAt });
+      }
+      return true;
     });
+    if (!created) return Response.json({ error: "request_already_exists" }, { status: 409 });
 
-    let status: Status = "cooling_off";
-    if (now < evaluation.eligibleAt) {
-      await this.ctx.storage.setAlarm(evaluation.eligibleAt);
-      this.append("cooling_off.started", { until: evaluation.eligibleAt });
-    } else {
-      await this.alarm();
-      status = (await this.state())?.status ?? "cooling_off";
+    if (now >= evaluation.eligibleAt) await this.alarm();
+    return Response.json({
+      status: (await this.state())?.status ?? state.status,
+      evaluation,
+      callback,
+    });
+  }
+
+  /** Invoked within a storage transaction; a delayed alarm cannot extend the deadline. */
+  private async currentState(now: number): Promise<StoredState | null> {
+    const state = await this.state();
+    if (state === null || state.callback === undefined) return state;
+    const callback = expireCallback(state.callback, now);
+    if (callback === state.callback) return state;
+
+    const next = { ...state, callback };
+    assertAuthority("callback.expire", "code");
+    await this.ctx.storage.put("state", next);
+    this.append("callback.expired", callback);
+    return next;
+  }
+
+  private async scheduleAlarm(state: StoredState, coolingAt = Infinity): Promise<void> {
+    const expiresAt = state.callback?.status === "pending" ? state.callback.expiresAt : Infinity;
+    const wakeAt = Math.min(coolingAt, expiresAt);
+    if (Number.isFinite(wakeAt)) await this.ctx.storage.setAlarm(wakeAt);
+  }
+
+  private async handleCallback(body: unknown): Promise<Response> {
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      !("operatorId" in body) ||
+      typeof body.operatorId !== "string" ||
+      body.operatorId.trim() === "" ||
+      body.operatorId.length > 128 ||
+      !("outcome" in body) ||
+      (body.outcome !== "completed" && body.outcome !== "failed") ||
+      !("actor" in body) ||
+      (body.actor !== "human" && body.actor !== "model" && body.actor !== "code")
+    ) {
+      return Response.json({ error: "invalid_callback_report" }, { status: 400 });
     }
+    const { actor, outcome } = body;
+    const operatorId = body.operatorId.trim();
+    return this.ctx.storage.transaction(async () => {
+      const now = Date.now();
+      const state = await this.currentState(now);
+      if (state === null) return Response.json({ error: "no_request" }, { status: 404 });
 
-    return Response.json({ status, evaluation });
+      try {
+        assertAuthority("callback.report", actor);
+        const current = state.callback;
+        if (current === undefined) {
+          return Response.json({ error: "callback.missing" }, { status: 409 });
+        }
+        // The request ID plus the single terminal outcome makes identical retries safe.
+        if (current.status === outcome && current.operatorId === operatorId) {
+          return Response.json({ callback: current });
+        }
+        if (current.status !== "pending") {
+          return Response.json({ error: `callback.${current.status}` }, { status: 409 });
+        }
+        if (state.status !== "cooling_off" && state.status !== "ready_for_review") {
+          return Response.json({ error: state.status }, { status: 409 });
+        }
+
+        const callback = reportCallback(current, outcome, operatorId, now);
+        assertAuthority("callback.report", actor);
+        await this.ctx.storage.put("state", { ...state, callback });
+        this.append(`callback.${callback.status}`, callback);
+        return Response.json({ callback });
+      } catch (error) {
+        if (error instanceof AuthorityViolation) return this.authorityFailure(error);
+        throw error;
+      }
+    });
+  }
+
+  private authorityFailure(error: AuthorityViolation): Response {
+    this.append("authority.violation", {
+      action: error.action,
+      expected: error.expected,
+      actual: error.actual,
+    });
+    return Response.json(
+      { ok: false, error: "authority_violation", action: error.action, expected: error.expected },
+      { status: 403 },
+    );
   }
 
   private async handleApproval(
@@ -156,73 +262,69 @@ export class ChangeRequestDO extends DurableObject<Env> {
     actor: Approval["actor"],
     review?: { readonly citationsOpened: number; readonly dwellMs: number },
   ): Promise<Response> {
-    const state = await this.state();
-    if (state === null) return new Response("No request", { status: 404 });
+    return this.ctx.storage.transaction(async () => {
+      const now = Date.now();
+      const state = await this.currentState(now);
+      if (state === null) return new Response("No request", { status: 404 });
 
-    const now = Date.now();
-    const approvals = [...state.approvals, { actor, approverId, at: now }];
-    const evidence =
-      review === undefined
-        ? state.evidence
-        : [
-            ...state.evidence,
-            {
-              approverId,
-              citationsOpened: Math.max(0, Math.floor(review.citationsOpened)),
-              dwellMs: Math.max(0, Math.floor(review.dwellMs)),
-              at: now,
-            },
-          ];
+      const approvals = [...state.approvals, { actor, approverId, at: now }];
+      const evidence =
+        review === undefined
+          ? state.evidence
+          : [
+              ...state.evidence,
+              {
+                approverId,
+                citationsOpened: Math.max(0, Math.floor(review.citationsOpened)),
+                dwellMs: Math.max(0, Math.floor(review.dwellMs)),
+                at: now,
+              },
+            ];
 
-    let result: ApprovalResult;
-    try {
+      let result: ApprovalResult;
+      try {
+        assertAuthority("decide.approveChange", actor);
+        // The clock alone is not enough: the alarm must have revalidated the master.
+        if (state.status !== "ready_for_review") {
+          assertAuthority("check.reviewReadiness", "code");
+          this.append("request.approval_rejected", {
+            approverId,
+            actor,
+            reason: state.invalidationReason ?? state.status,
+          });
+          return Response.json(
+            { ok: false, reason: state.invalidationReason ?? state.status },
+            { status: 409 },
+          );
+        }
+
+        const callbackBlock = callbackApprovalBlock(state.callback);
+        if (callbackBlock !== null) {
+          assertAuthority("check.callbackCompletion", "code");
+          this.append("request.approval_rejected", { approverId, actor, reason: callbackBlock });
+          return Response.json({ ok: false, reason: callbackBlock }, { status: 409 });
+        }
+
+        result = approve(state.evaluation, approvals, now, this.policy());
+      } catch (error) {
+        if (error instanceof AuthorityViolation) return this.authorityFailure(error);
+        throw error;
+      }
+
+      if (result.ok) {
+        const next: StoredState = { ...state, approvals, evidence, status: "approved" };
+        assertAuthority("decide.approveChange", actor);
+        await this.ctx.storage.put("state", next);
+        this.append("request.approved", { approverId });
+        return Response.json({ ok: true, status: next.status });
+      }
+
+      const next: StoredState = { ...state, approvals, evidence };
       assertAuthority("decide.approveChange", actor);
-      // The clock alone is not enough: the alarm must have revalidated the master.
-      if (state.status !== "ready_for_review") {
-        assertAuthority("check.reviewReadiness", "code");
-        this.append("request.approval_rejected", {
-          approverId,
-          actor,
-          reason: state.invalidationReason ?? state.status,
-        });
-        return Response.json(
-          { ok: false, reason: state.invalidationReason ?? state.status },
-          { status: 409 },
-        );
-      }
-
-      result = approve(state.evaluation, approvals, now, this.policy());
-    } catch (error) {
-      if (error instanceof AuthorityViolation) {
-        this.append("authority.violation", {
-          action: error.action,
-          expected: error.expected,
-          actual: error.actual,
-        });
-        return Response.json(
-          {
-            ok: false,
-            error: "authority_violation",
-            action: error.action,
-            expected: error.expected,
-          },
-          { status: 403 },
-        );
-      }
-      throw error;
-    }
-
-    if (result.ok) {
-      const next: StoredState = { ...state, approvals, evidence, status: "approved" };
       await this.ctx.storage.put("state", next);
-      this.append("request.approved", { approverId });
-      return Response.json({ ok: true, status: next.status });
-    }
-
-    const next: StoredState = { ...state, approvals, evidence };
-    await this.ctx.storage.put("state", next);
-    this.append("request.approval_rejected", { approverId, actor, reason: result.reason });
-    return Response.json({ ok: false, reason: result.reason }, { status: 409 });
+      this.append("request.approval_rejected", { approverId, actor, reason: result.reason });
+      return Response.json({ ok: false, reason: result.reason }, { status: 409 });
+    });
   }
 
   /**
@@ -273,66 +375,57 @@ export class ChangeRequestDO extends DurableObject<Env> {
     });
   }
 
-  /** Fires when the cooling-off period ends. Survives eviction, restarts, deploys. */
+  /** One persistent alarm wakes for cooling-off, master retries, or callback expiry. */
   override async alarm(): Promise<void> {
-    const state = await this.state();
+    const state = await this.ctx.storage.transaction(async () => {
+      const now = Date.now();
+      const current = await this.currentState(now);
+      if (current === null) return null;
+      if (current.status !== "cooling_off") {
+        await this.scheduleAlarm(current);
+        return null;
+      }
+      if (now < current.evaluation.eligibleAt) {
+        await this.scheduleAlarm(current, current.evaluation.eligibleAt);
+        return null;
+      }
+      return current;
+    });
     if (state === null) return;
 
-    if (state.status !== "cooling_off") return;
-    if (Date.now() < state.evaluation.eligibleAt) {
-      await this.ctx.storage.setAlarm(state.evaluation.eligibleAt);
-      return;
-    }
-
-    let current: Vendor;
+    let current: Vendor | undefined;
     try {
       current = await readVendorMaster(this.env.VENDOR_MASTER, state.request.vendorId);
     } catch {
-      await this.ctx.blockConcurrencyWhile(async () => {
-        const latest = await this.state();
-        if (
-          latest === null ||
-          latest.status !== "cooling_off" ||
-          latest.evaluatedAt !== state.evaluatedAt
-        )
-          return;
-        await this.ctx.storage.transaction(async () => {
-          assertAuthority("check.vendorRevalidationRetry", "code");
-          this.append("vendor.revalidation_failed", { vendorId: state.request.vendorId });
-          // Keep pending until an operator restores the master; never release on read failure.
-          await this.ctx.storage.setAlarm(Date.now() + 60_000);
-        });
-      });
-      return;
+      // Keep pending until an operator restores the master; never release on read failure.
     }
 
-    const changedFields = vendorChanges(state.vendor, current);
-    const changed = changedFields.length > 0;
-    const next: StoredState = changed
-      ? { ...state, status: "invalidated", invalidationReason: "vendor.changed_mid_flow" }
-      : { ...state, status: "ready_for_review" };
-
-    // KV reads yield to other requests. Recheck inside the storage concurrency gate
-    // and commit the transition and audit log together; duplicate alarms are no-ops.
-    // SQLite-backed DO transactions include top-level storage and SQL operations.
-    await this.ctx.blockConcurrencyWhile(async () => {
-      const latest = await this.state();
-      if (
-        latest === null ||
-        latest.status !== "cooling_off" ||
-        latest.evaluatedAt !== state.evaluatedAt
-      )
+    // KV reads yield. Preserve any callback outcome recorded during revalidation.
+    await this.ctx.storage.transaction(async () => {
+      const now = Date.now();
+      const latest = await this.currentState(now);
+      if (latest === null || latest.status !== "cooling_off") return;
+      if (current === undefined) {
+        assertAuthority("check.vendorRevalidationRetry", "code");
+        this.append("vendor.revalidation_failed", { vendorId: state.request.vendorId });
+        await this.scheduleAlarm(latest, now + 60_000);
         return;
-      await this.ctx.storage.transaction(async () => {
-        assertAuthority("check.vendorRevalidation", "code");
-        await this.ctx.storage.put("state", next);
-        this.append("vendor.revalidated", { vendorId: state.request.vendorId, changedFields });
-        if (changed) {
-          this.append("vendor.changed_mid_flow", { changedFields });
-        } else {
-          this.append("cooling_off.elapsed", {});
-        }
-      });
+      }
+
+      const changedFields = vendorChanges(state.vendor, current);
+      const next: StoredState =
+        changedFields.length > 0
+          ? { ...latest, status: "invalidated", invalidationReason: "vendor.changed_mid_flow" }
+          : { ...latest, status: "ready_for_review" };
+      assertAuthority("check.vendorRevalidation", "code");
+      await this.ctx.storage.put("state", next);
+      this.append("vendor.revalidated", { vendorId: state.request.vendorId, changedFields });
+      if (next.status === "invalidated") {
+        this.append("vendor.changed_mid_flow", { changedFields });
+      } else {
+        this.append("cooling_off.elapsed", {});
+      }
+      await this.scheduleAlarm(next);
     });
   }
 }

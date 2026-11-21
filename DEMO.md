@@ -11,6 +11,8 @@ pnpm --filter @pcc/web dev       # :5173
 ```
 
 Open `http://localhost:5173` and press **Load demo data**. Six requests appear.
+Pressing it again loads the same requests and preserves their recorded outcomes
+and audit evidence.
 
 ## The run
 
@@ -56,6 +58,10 @@ Press **Try to approve as the model**.
 Back to the list. Open **Bank merger**.
 
 > "Same vendor, real change, number on file. No findings."
+
+In **Registered-number callback**, point out that the task uses the vendor master, not a number
+from the email. For this fixture, simulate the manual call: enter `reviewer` and press **Record
+successful callback**. This is a demo attestation, not a real call or a bank ownership check.
 
 Press **Approve as clerk**.
 
@@ -114,7 +120,7 @@ pnpm test:do
 ```
 
 > "Real workerd, alarm fires, process killed, restarted against the same storage, state
-> rehydrates. Seven checks, no mocks."
+> rehydrates with the callback evidence. No mocks."
 
 ## Questions you will get
 

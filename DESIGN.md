@@ -43,7 +43,7 @@ verifier disposes. See §11 for the rest of the pedigree.
 
 ## 3. Non-goals
 
-- Multi-tenancy, billing, SSO. This is a single-domain harness, not a SaaS.
+- Multi-tenancy, billing, or operator authentication. This is a local harness, not a SaaS.
 - Email ingestion from a real mailbox. The raw body arrives in a JSON request.
 - Actually moving money. Approval ends at a status, not a payment.
 - Being a framework. It is one worked example, deliberately narrow.
@@ -59,6 +59,7 @@ Citation          quote, start, end
 Evaluation        outcome (reject | escalate), reasons[], validClaims[], eligibleAt
 Reason            code, detail, owner, blocking
 Approval          actor, approverId, at
+CallbackChallenge phoneOnFile, createdAt, expiresAt, status, resolvedAt?, operatorId?
 ```
 
 A request moves through:
@@ -73,6 +74,20 @@ There is no automatic approval state. The best a request can reach without a hum
 `ready_for_review`. At cooling-off expiry, master bank/domain/phone drift moves the
 request to terminal `invalidated`, which blocks approval.
 
+At intake the Worker snapshots a callback task from the vendor master, independently of any
+number in the email. A human calls that number outside the app and attests `completed` or
+`failed` via `POST /api/requests/:id/callback` with `{ "actor": "human", "operatorId": "…",
+"outcome": "completed" }` (or `"failed"`). The task expires if still pending seven days after
+creation; the same Durable Object alarm handles both deadlines. Each outcome is terminal and
+stored on the request and in its event trace. Only completion permits collection of approvals;
+it never waives cooling-off, master revalidation, blocking findings, or the two-human rule.
+Failed, expired, and pre-feature requests without a challenge need a new request ID.
+
+This is an operator attestation of control of the registered phone number, not verification of the
+bank account or proof from a telephony provider. As with the approval API, actor and operator ID
+are demo inputs, not authenticated identity. A deployment must authenticate and authorize
+operators server-side and bind their identity before exposing these write endpoints.
+
 ## 5. Authority
 
 `packages/domain/src/authority.ts` is the single source of truth:
@@ -83,6 +98,8 @@ request to terminal `invalidated`, which blocks approval.
 | Verify a citation is verbatim                   | code  |
 | Compare sender domain to the vendor master      | code  |
 | Decide whether a callback number is trustworthy | code  |
+| Create, expire, and require a callback task     | code  |
+| Attest the result of a manual callback          | human |
 | Enforce the cooling-off period                  | code  |
 | Approve the change                              | human |
 | Release payment                                 | human |

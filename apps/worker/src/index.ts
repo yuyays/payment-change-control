@@ -71,9 +71,10 @@ export default {
       return json({ ok: true, service: "payment-change-control" });
     }
 
-    const match = /^\/api\/requests\/([A-Za-z0-9_-]+)\/(intake|approve|state|extract|replay)$/.exec(
-      url.pathname,
-    );
+    const match =
+      /^\/api\/requests\/([A-Za-z0-9_-]+)\/(intake|approve|state|extract|replay|callback)$/.exec(
+        url.pathname,
+      );
     if (match === null) return json({ error: "not_found" }, 404);
 
     const id = match[1];
