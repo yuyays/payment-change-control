@@ -1,10 +1,17 @@
-import { authorityTable } from "@pcc/domain";
+import { authorityTable, type CallbackReport } from "@pcc/domain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { approve, getState, replay, type Claim, type ReplayResult } from "@/lib/api.js";
+import {
+  approve,
+  getState,
+  recordCallback,
+  replay,
+  type Claim,
+  type ReplayResult,
+} from "@/lib/api.js";
 import { formatMoney } from "@/lib/money.js";
 
 export const Route = createFileRoute("/requests/$id")({
@@ -105,6 +112,12 @@ function RequestRoute() {
       void queryClient.invalidateQueries({ queryKey: ["states"] });
     },
     onError: (error: Error) => setMessage(error.message),
+  });
+
+  const [operatorId, setOperatorId] = useState("");
+  const callbackMutation = useMutation({
+    mutationFn: (outcome: CallbackReport) => recordCallback(id, outcome, operatorId),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["state", id] }),
   });
 
   const [replayResult, setReplayResult] = useState<ReplayResult | null>(null);
@@ -276,9 +289,78 @@ function RequestRoute() {
 
             <Card>
               <CardHeader>
+                <CardTitle className="text-lg">Registered-number callback</CardTitle>
+                <CardDescription>
+                  Call the number from the vendor master, not the email. This checks control of the
+                  registered number, not ownership of the bank account.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {state.callback === undefined ? (
+                  <p>No callback challenge on file. Start a new request to verify the number.</p>
+                ) : (
+                  <>
+                    <p>
+                      <span className="font-mono">{state.callback.phoneOnFile}</span>
+                      {" · "}
+                      {state.callback.status}
+                    </p>
+                    <p>Deadline: {new Date(state.callback.expiresAt).toLocaleString()}</p>
+                    {"resolvedAt" in state.callback ? (
+                      <p>
+                        Resolved: {new Date(state.callback.resolvedAt).toLocaleString()}
+                        {"operatorId" in state.callback ? ` · ${state.callback.operatorId}` : ""}
+                      </p>
+                    ) : null}
+                    {state.callback.status === "failed" || state.callback.status === "expired" ? (
+                      <p>Start a new request if verification is still needed.</p>
+                    ) : null}
+                    {state.callback.status === "pending" && state.status !== "invalidated" ? (
+                      <>
+                        <label className="block">
+                          Operator ID
+                          <input
+                            className="ml-2 rounded border border-stone-300 px-2 py-1"
+                            value={operatorId}
+                            maxLength={128}
+                            onChange={(event) => setOperatorId(event.target.value)}
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            disabled={callbackMutation.isPending || operatorId.trim() === ""}
+                            onClick={() => callbackMutation.mutate("completed")}
+                          >
+                            Record successful callback
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={callbackMutation.isPending || operatorId.trim() === ""}
+                            onClick={() => callbackMutation.mutate("failed")}
+                          >
+                            Record failed callback
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                )}
+                {callbackMutation.error === null ? null : (
+                  <p role="alert" className="text-red-800">
+                    {callbackMutation.error.message}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-lg">Approval</CardTitle>
                 <CardDescription>
-                  Eligible from {eligible.toLocaleString()}. Two distinct humans.
+                  Eligible from {eligible.toLocaleString()}. A successful callback and two distinct
+                  humans are required.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -292,7 +374,11 @@ function RequestRoute() {
                   <Button
                     size="sm"
                     onClick={() => approval.mutate({ approverId: "clerk", actor: "human" })}
-                    disabled={approval.isPending || state.status !== "ready_for_review"}
+                    disabled={
+                      approval.isPending ||
+                      state.status !== "ready_for_review" ||
+                      state.callback?.status !== "completed"
+                    }
                   >
                     Approve as clerk
                   </Button>
@@ -300,7 +386,11 @@ function RequestRoute() {
                     size="sm"
                     variant="outline"
                     onClick={() => approval.mutate({ approverId: "controller", actor: "human" })}
-                    disabled={approval.isPending || state.status !== "ready_for_review"}
+                    disabled={
+                      approval.isPending ||
+                      state.status !== "ready_for_review" ||
+                      state.callback?.status !== "completed"
+                    }
                   >
                     Approve as controller
                   </Button>

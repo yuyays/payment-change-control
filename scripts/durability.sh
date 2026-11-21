@@ -77,11 +77,27 @@ sleep 10
 check "alarm fired and moved the request to ready_for_review" \
   "$(status_of dur-1)" "ready_for_review"
 
+check "approval blocked before callback" \
+  "$(curl -s -o /tmp/pcc-pending-approval.json -w '%{http_code}' -X POST \
+    "$BASE/api/requests/dur-1/approve" -H 'content-type: application/json' \
+    -d '{"approverId":"clerk"}')" "409"
+check "blocked approval did not collect a vote" "$(approvals_of dur-1)" "0"
+check "operator can record a successful registered-number callback" \
+  "$(curl -s -o /tmp/pcc-callback.json -w '%{http_code}' -X POST \
+    "$BASE/api/requests/dur-1/callback" -H 'content-type: application/json' \
+    -d '{"actor":"human","operatorId":"reviewer","outcome":"completed"}')" "200"
+
 echo "3. kill the process, restart against the same storage"
 stop
 check "state survived process death" "$(status_of dur-1 2>/dev/null || echo unreachable)" "unreachable"
 start
 check "state rehydrated after restart" "$(status_of dur-1)" "ready_for_review"
+curl -sf "$BASE/api/requests/dur-1/state" > /tmp/pcc-callback-state.json
+check "callback evidence rehydrated after restart" \
+  "$(json "d['state']['callback']['operatorId']" < /tmp/pcc-callback-state.json)" "reviewer"
+check "callback completion audit survived" \
+  "$(json "sum(e['type'] == 'callback.completed' for e in d['events'])" < /tmp/pcc-callback-state.json)" "1"
+
 
 echo "4. concurrent approvals"
 curl -s -X POST "$BASE/api/requests/dur-1/approve" -H 'content-type: application/json' \

@@ -57,6 +57,10 @@ Back to the list. Open **Bank merger**.
 
 > "Same vendor, real change, number on file. No findings."
 
+In **Registered-number callback**, point out that the task uses the vendor master, not a number
+from the email. For this fixture, simulate the manual call: enter `reviewer` and press **Record
+successful callback**. This is a demo attestation, not a real call or a bank ownership check.
+
 Press **Approve as clerk**.
 
 > `Requires 2 distinct human approvers; have 1.`
@@ -114,7 +118,7 @@ pnpm test:do
 ```
 
 > "Real workerd, alarm fires, process killed, restarted against the same storage, state
-> rehydrates. Seven checks, no mocks."
+> rehydrates with the callback evidence. No mocks."
 
 ## Questions you will get
 

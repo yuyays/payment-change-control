@@ -1,3 +1,5 @@
+import type { CallbackChallenge, CallbackReport } from "@pcc/domain";
+
 export interface ClaimCitation {
   readonly field: string;
   readonly quote: string;
@@ -62,6 +64,7 @@ export interface RequestState {
   readonly vendor: Vendor;
   readonly evaluation: Evaluation;
   readonly status: Status;
+  readonly callback?: CallbackChallenge;
   readonly invalidationReason?: "vendor.changed_mid_flow";
   readonly approvals: ReadonlyArray<{ actor: string; approverId: string; at: number }>;
   readonly evidence: ReadonlyArray<ReviewEvidence>;
@@ -181,3 +184,10 @@ export const approve = async (
   }
   return { ok: body["ok"] };
 };
+
+export const recordCallback = (id: string, outcome: CallbackReport, operatorId: string) =>
+  fetch(url(`/requests/${id}/callback`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ outcome, operatorId, actor: "human" }),
+  }).then((r) => json<{ callback: CallbackChallenge }>(r));

@@ -184,7 +184,9 @@ export type ApprovalResult =
 
 /**
  * Human-only. Throws `AuthorityViolation` if a non-human actor is present in the
- * approval list — including a model pretending to be one.
+ * approval list — including a model pretending to be one. This checks the intake
+ * findings and votes; the request lifecycle separately gates on master
+ * revalidation and recorded callback completion.
  */
 export function approve(
   evaluation: Evaluation,

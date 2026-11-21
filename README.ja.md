@@ -44,11 +44,14 @@ Cloudflare Workers + Durable Objects で動作。評価ケース30件、敵対�
 
 ```sh
 pnpm install
+pnpm --filter @pcc/worker demo:seed-master  # 信頼済みのローカルマスタ
 pnpm --filter @pcc/worker dev    # :8787
 pnpm --filter @pcc/web dev       # :5173
 ```
 
 http://localhost:5173 を開き、**Load demo data** を押してリクエストを開く。引用検証済みのスパンがハイライトされたメール、担当者タグ付きの検出項目、権限表、承認パネル、リプレイ、承認者ごとのレビュー証跡が表示される。
+
+**Registered-number callback** に表示されたベンダーマスタの登録番号に電話し、担当者 ID と結果を記録する。未完了の課題は作成から7日で期限切れになり、成功が記録されるまで承認できない。結果はリクエストとイベント履歴に残る。確認するのは登録番号の支配であり、口座の所有ではない。ローカルデモに担当者認証はないため、本番利用前に認証・認可が必要。
 
 **Try to approve as the model** を押すと `403 authority_violation` が返る。
 

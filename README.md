@@ -38,7 +38,8 @@ Values must also be well-formed: an IBAN has to pass ISO 13616 mod-97.
 **Code checks the signals.** Sender domain against the vendor master (including lookalikes),
 Reply-To mismatch, callback number must match the one on file, recent-change flag, cooling-off.
 
-**A human approves.** Two distinct humans, after a 48-hour cooling-off period. The authority
+**Humans verify and approve.** A successful manual callback to the registered phone, a 48-hour
+cooling-off period, and two distinct approvers are required. The authority
 table below is the same exported object the gate enforces — the UI renders it, it is not a
 transcription.
 
@@ -48,6 +49,8 @@ transcription.
 | Verify a citation is verbatim               | code  |
 | Compare sender domain to the vendor master  | code  |
 | Decide whether a callback number is trusted | code  |
+| Create, expire and require a callback task  | code  |
+| Attest the result of a manual callback      | human |
 | Enforce the cooling-off period              | code  |
 | Approve the change                          | human |
 | Release payment                             | human |
@@ -65,7 +68,13 @@ pnpm --filter @pcc/web dev       # :5173
 
 Open http://localhost:5173, press **Load demo data**, and open a request. You get the email with
 citation-checked spans highlighted, the findings with their owners, the authority table, an
-approval panel, replay, and the review evidence recorded for each approver.
+callback task, an approval panel, replay, and the review evidence recorded for each approver.
+
+In **Registered-number callback**, use the displayed vendor-master number (not the email) and
+record the result after calling. A pending task expires after seven days; only a successful
+callback unlocks approval. The task and result stay in the request trace. This verifies control of
+the registered number, not bank account ownership. The local demo does not authenticate operator
+IDs; see [the deployment boundary](DESIGN.md#4-domain-model).
 
 **Try to approve as the model** returns `403 authority_violation`.
 
