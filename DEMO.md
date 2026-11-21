@@ -11,6 +11,8 @@ pnpm --filter @pcc/web dev       # :5173
 ```
 
 Open `http://localhost:5173` and press **Load demo data**. Six requests appear.
+Pressing it again loads the same requests and preserves their recorded outcomes
+and audit evidence.
 
 ## The run
 

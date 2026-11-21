@@ -130,12 +130,19 @@ export const seedEml = (id: string, vendor: SeedPayload["vendor"], eml: string):
     body: JSON.stringify({ vendor, eml }),
   }).then((r) => json<unknown>(r));
 
-export const seed = (id: string, payload: SeedPayload): Promise<unknown> =>
-  fetch(url(`/requests/${id}/intake`), {
+export const seedDemoRequest = async (id: string, payload: SeedPayload): Promise<void> => {
+  const response = await fetch(url(`/requests/${id}/intake`), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
-  }).then((r) => json<unknown>(r));
+  });
+  if (response.status === 409) {
+    const body: unknown = await response.json();
+    if (isRecord(body) && body["error"] === "request_already_exists") return;
+    throw new Error(messageOf(body, response.status));
+  }
+  await json<unknown>(response);
+};
 
 export interface ReplayResult {
   readonly decision: {

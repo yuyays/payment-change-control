@@ -1,4 +1,4 @@
-import { seed, type SeedPayload } from "./api.js";
+import { seedDemoRequest, type SeedPayload } from "./api.js";
 
 const HOUR = 3_600_000;
 
@@ -112,5 +112,5 @@ export const DEMO_REQUESTS: ReadonlyArray<DemoRequest> = [
 ];
 
 export const seedAll = async (): Promise<void> => {
-  await Promise.all(DEMO_REQUESTS.map((request) => seed(request.id, request.payload)));
+  await Promise.all(DEMO_REQUESTS.map((request) => seedDemoRequest(request.id, request.payload)));
 };
